@@ -1,0 +1,94 @@
+{
+  "name": "@zakkster/lite-leakforge",
+  "version": "1.0.0",
+  "description": "Leak specimens, CI harness, and dashboard for @zakkster/lite-leak. Zero-GC diagnostic toolkit.",
+  "type": "module",
+  "main": "./Leakforge.js",
+  "module": "./Leakforge.js",
+  "types": "./Leakforge.d.ts",
+  "exports": {
+    ".": {
+      "types": "./Leakforge.d.ts",
+      "node": "./Leakforge.js",
+      "import": "./Leakforge.js",
+      "default": "./Leakforge.js"
+    },
+    "./harness": {
+      "types": "./harness/Harness.d.ts",
+      "node": "./harness/Harness.js",
+      "import": "./harness/Harness.js",
+      "default": "./harness/Harness.js"
+    },
+    "./formatters": {
+      "types": "./formatters/Format.d.ts",
+      "node": "./formatters/Format.js",
+      "import": "./formatters/Format.js",
+      "default": "./formatters/Format.js"
+    },
+    "./scenarios": {
+      "types": "./scenarios/Scenarios.d.ts",
+      "node": "./scenarios/Scenarios.js",
+      "import": "./scenarios/Scenarios.js",
+      "default": "./scenarios/Scenarios.js"
+    },
+    "./panels": {
+      "types": "./panels/Panels.d.ts",
+      "node": "./panels/Panels.js",
+      "import": "./panels/Panels.js",
+      "default": "./panels/Panels.js"
+    }
+  },
+  "files": [
+    "Leakforge.js",
+    "Leakforge.d.ts",
+    "harness/",
+    "formatters/",
+    "scenarios/",
+    "panels/",
+    "CHANGELOG.md",
+    "llms.txt",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "test:gc": "node --expose-gc --test test/*.test.js"
+  },
+  "keywords": [
+    "leak-detection",
+    "leak-specimens",
+    "diagnostics",
+    "zero-gc",
+    "lite-signal",
+    "lite-leak",
+    "ci-harness",
+    "zakkster"
+  ],
+  "author": "Zahary Shinikchiev <shinikchiev@yahoo.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PeshoVurtoleta/lite-leakforge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PeshoVurtoleta/lite-leakforge/issues"
+  },
+  "homepage": "https://github.com/PeshoVurtoleta/lite-leakforge#readme",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/PeshoVurtoleta"
+  },
+  "dependencies": {
+    "@zakkster/lite-leak": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@zakkster/lite-signal": ">=1.5.0-beta.3 <2.0.0"
+  },
+  "devDependencies": {
+    "@zakkster/lite-signal": "^1.5.0-beta.3"
+  }
+}

@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>lite-leakforge -- leak specimens, CI harness, dashboard</title>
+<style>
+/* ------------------------------------------------------------------
+   Oscilloscope theme tokens. Hex declared first, oklch second --
+   browsers without oklch keep the hex.
+------------------------------------------------------------------ */
+:root {
+    --ph: #39ff14;
+    --ph-ok: oklch(0.86 0.28 141);
+    --ph-dim: #1f8f12;
+    --ph-dim-ok: oklch(0.58 0.19 141);
+    --bg: #070b07;
+    --bg-ok: oklch(0.13 0.015 145);
+    --bg2: #0d130d;
+    --bg2-ok: oklch(0.17 0.02 145);
+    --dim: #1c291c;
+    --dim-ok: oklch(0.24 0.03 145);
+    --mute: #4a6b4a;
+    --mute-ok: oklch(0.46 0.06 145);
+    --grid: #142014;
+    --grid-ok: oklch(0.2 0.025 145);
+    --warn: #ffb347;
+    --warn-ok: oklch(0.81 0.14 70);
+    --err: #ff5555;
+    --err-ok: oklch(0.66 0.21 25);
+    --find: #55aaff;
+    --find-ok: oklch(0.71 0.14 250);
+    --mono: 'SF Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace;
+    --r: 0.25rem;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; }
+
+html { font-size: 14px; }
+
+body {
+    background: var(--bg);
+    background: var(--bg-ok);
+    color: var(--ph);
+    color: var(--ph-ok);
+    font-family: var(--mono);
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ------------------------------------------------------------------
+   Header
+------------------------------------------------------------------ */
+#header {
+    padding: 0.85rem 1.25rem 0.75rem;
+    border-bottom: 1px solid var(--dim);
+    border-bottom-color: var(--dim-ok);
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+#header h1 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-shadow: 0 0 8px rgba(57, 255, 20, 0.45);
+}
+
+#header .ver { font-size: 0.75rem; color: var(--mute); color: var(--mute-ok); }
+
+#header .tagline {
+    font-size: 0.7rem;
+    color: var(--mute);
+    color: var(--mute-ok);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+#header .tagline b {
+    color: var(--ph);
+    color: var(--ph-ok);
+    font-weight: 600;
+}
+
+#header .install {
+    margin-left: auto;
+    font-size: 0.7rem;
+    color: var(--ph-dim);
+    color: var(--ph-dim-ok);
+    border: 1px solid var(--dim);
+    border-color: var(--dim-ok);
+    border-radius: var(--r);
+    padding: 0.25rem 0.6rem;
+    background: var(--bg2);
+    background: var(--bg2-ok);
+    user-select: all;
+}
+
+/* ------------------------------------------------------------------
+   Tabs
+------------------------------------------------------------------ */
+#tabs {
+    display: flex;
+    border-bottom: 1px solid var(--dim);
+    border-bottom-color: var(--dim-ok);
+    overflow-x: auto;
+}
+
+#tabs button {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--mute);
+    color: var(--mute-ok);
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    padding: 0.55rem 1rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+@media (hover: hover) {
+    #tabs button:hover { color: var(--ph); color: var(--ph-ok); }
+}
+
+#tabs button.active {
+    color: var(--ph);
+    color: var(--ph-ok);
+    border-bottom-color: var(--ph);
+    border-bottom-color: var(--ph-ok);
+}
+
+/* ------------------------------------------------------------------
+   Scenes + panels
+------------------------------------------------------------------ */
+.scene { display: none; flex: 1; padding: 1rem; overflow-y: auto; }
+.scene.active { display: flex; flex-direction: column; gap: 1rem; }
+
+.scene-blurb {
+    font-size: 0.72rem;
+    color: var(--mute);
+    color: var(--mute-ok);
+    max-width: 62rem;
+    line-height: 1.55;
+}
+
+.scene-blurb code {
+    color: var(--ph-dim);
+    color: var(--ph-dim-ok);
+}
+
+.scene-blurb b {
+    color: var(--ph);
+    color: var(--ph-ok);
+    font-weight: 600;
+}
+
+.cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+    gap: 1rem;
+    align-items: start;
+}
+
+.col { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+
+.panel {
+    background: var(--bg2);
+    background: var(--bg2-ok);
+    border: 1px solid var(--dim);
+    border-color: var(--dim-ok);
+    border-radius: var(--r);
+    padding: 0.75rem;
+}
+
+.panel-title {
+    font-size: 0.68rem;
+    color: var(--mute);
+    color: var(--mute-ok);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 0.5rem;
+}
+
+.crt-grid {
+    background-image:
+        repeating-linear-gradient(0deg, transparent, transparent 19px, var(--grid) 19px, var(--grid) 20px),
+        repeating-linear-gradient(90deg, transparent, transparent 19px, var(--grid) 19px, var(--grid) 20px);
+    background-size: 20px 20px;
+}
+
+.scope { height: 8.5rem; position: relative; overflow: hidden; padding: 0; }
+.scope canvas { width: 100%; height: 100%; display: block; }
+
+.btn-row { display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center; }
+
+.btn {
+    background: var(--dim);
+    background: var(--dim-ok);
+    border: 1px solid var(--mute);
+    border-color: var(--mute-ok);
+    color: var(--ph);
+    color: var(--ph-ok);
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--r);
+    cursor: pointer;
+    transition: background 0.1s, opacity 0.1s;
+}
+
+@media (hover: hover) {
+    .btn:hover { background: var(--mute); background: var(--mute-ok); }
+}
+
+.btn:active { background: #3d663d; }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.btn.warn { border-color: var(--warn); border-color: var(--warn-ok); color: var(--warn); color: var(--warn-ok); }
+.btn.err { border-color: var(--err); border-color: var(--err-ok); color: var(--err); color: var(--err-ok); }
+.btn.find { border-color: var(--find); border-color: var(--find-ok); color: var(--find); color: var(--find-ok); }
+
+/* ------------------------------------------------------------------
+   Counters, badges, logs, cards
+------------------------------------------------------------------ */
+.stats { display: flex; gap: 1.5rem; justify-content: center; flex-wrap: wrap; }
+.stat { display: flex; flex-direction: column; align-items: center; }
+.counter { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.counter.warn { color: var(--warn); color: var(--warn-ok); }
+.counter.err { color: var(--err); color: var(--err-ok); }
+.counter-label {
+    font-size: 0.62rem;
+    color: var(--mute);
+    color: var(--mute-ok);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.badge {
+    display: inline-block;
+    font-size: 0.6rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 0.15rem;
+    border: 1px solid;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.badge.ok { border-color: var(--ph); border-color: var(--ph-ok); color: var(--ph); color: var(--ph-ok); }
+.badge.fail { border-color: var(--err); border-color: var(--err-ok); color: var(--err); color: var(--err-ok); }
+.badge.off { border-color: var(--mute); border-color: var(--mute-ok); color: var(--mute); color: var(--mute-ok); }
+
+.log {
+    font-size: 0.7rem;
+    max-height: 11rem;
+    overflow-y: auto;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.log.tall { max-height: 22rem; }
+
+.log .leak, .log .error { color: var(--err); color: var(--err-ok); }
+.log .warning { color: var(--warn); color: var(--warn-ok); }
+.log .finding { color: var(--find); color: var(--find-ok); }
+.log .info { color: var(--mute); color: var(--mute-ok); }
+.log .pass { color: var(--ph); color: var(--ph-ok); }
+
+.kernel-card {
+    border: 1px solid var(--dim);
+    border-color: var(--dim-ok);
+    border-radius: var(--r);
+    padding: 0.5rem 0.6rem;
+    font-size: 0.7rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.kernel-card .kname { font-weight: 600; display: flex; gap: 0.5rem; align-items: center; }
+.kernel-card .kdetail { color: var(--mute); color: var(--mute-ok); font-size: 0.65rem; }
+
+.card-stack { display: flex; flex-direction: column; gap: 0.4rem; }
+
+.spec-card {
+    border: 1px solid var(--dim);
+    border-color: var(--dim-ok);
+    border-radius: var(--r);
+    padding: 0.55rem 0.65rem;
+    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.spec-card .sname { font-weight: 600; min-width: 8.5rem; }
+.spec-card .schan { color: var(--mute); color: var(--mute-ok); font-size: 0.63rem; flex: 1; min-width: 10rem; }
+
+.output {
+    font-size: 0.68rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 24rem;
+    overflow-y: auto;
+    line-height: 1.55;
+    color: var(--ph-dim);
+    color: var(--ph-dim-ok);
+}
+
+.output.pass { color: var(--ph); color: var(--ph-ok); }
+.output.fail { color: var(--err); color: var(--err-ok); }
+
+.hint {
+    font-size: 0.63rem;
+    color: var(--mute);
+    color: var(--mute-ok);
+    margin-top: 0.5rem;
+    line-height: 1.5;
+}
+
+.hint code { color: var(--ph-dim); color: var(--ph-dim-ok); }
+
+.progress {
+    height: 0.3rem;
+    background: var(--dim);
+    background: var(--dim-ok);
+    border-radius: var(--r);
+    overflow: hidden;
+    margin-top: 0.5rem;
+}
+
+.progress-fill {
+    height: 100%;
+    width: 100%;
+    background: var(--ph);
+    background: var(--ph-ok);
+    transform: scaleX(0);
+    transform-origin: left;
+}
+
+/* Dashboard scene: theme the packaged component */
+#dsh-mount .lf-dashboard { color: var(--ph); color: var(--ph-ok); }
+#dsh-mount .lf-dashboard .lf-kernel,
+#dsh-mount .lf-dashboard .lf-inspector { border-color: var(--dim); border-color: var(--dim-ok); }
+#dsh-mount .lf-dashboard .lf-row.selected { color: var(--warn); color: var(--warn-ok); }
+
+#footer {
+    padding: 0.6rem 1.25rem;
+    border-top: 1px solid var(--dim);
+    border-top-color: var(--dim-ok);
+    font-size: 0.65rem;
+    color: var(--mute);
+    color: var(--mute-ok);
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+#footer code { color: var(--ph-dim); color: var(--ph-dim-ok); }
+</style>
+</head>
+<body>
+
+<div id="header">
+    <h1>lite-leakforge</h1>
+    <span class="ver" id="hdr-ver"></span>
+    <span class="tagline"><b>prove it</b> / <b>show it</b> / <b>gate it</b> -- leak specimens, CI harness, dashboard for lite-leak</span>
+    <code class="install">npm i @zakkster/lite-leakforge</code>
+</div>
+
+<nav id="tabs">
+    <button data-scene="tracker" class="active">1 tracker</button>
+    <button data-scene="kernels">2 kernel gallery</button>
+    <button data-scene="specimens">3 specimen lab</button>
+    <button data-scene="audit">4 audit console</button>
+    <button data-scene="dashboard">5 dashboard</button>
+    <button data-scene="stress">6 stress</button>
+</nav>
+
+<!-- Scene 1: Tracker primitive -->
+<div class="scene active" id="scene-tracker">
+    <div class="scene-blurb">
+        The primitive layer: <code>tracker.track(target, cleanup, tag)</code> registers a target with a
+        FinalizationRegistry. <code>untrack</code> is the clean path. <code>abandon</code> drops the last
+        handle AND the strong reference without untracking -- when the browser collects the target,
+        the FR path fires and <code>onLeak</code> reports it.
+    </div>
+    <div class="cols">
+        <div class="col">
+            <div class="panel">
+                <div class="panel-title">tracker controls</div>
+                <div class="btn-row">
+                    <button class="btn" id="trk-track">track</button>
+                    <button class="btn" id="trk-untrack">untrack last</button>
+                    <button class="btn warn" id="trk-abandon">abandon (leak)</button>
+                    <button class="btn find" id="trk-pressure">gc pressure</button>
+                </div>
+                <div class="hint">abandoned targets are reported when the engine actually collects them --
+                timing is up to the GC. gc pressure allocates throwaway buffers to encourage a pass.</div>
+            </div>
+            <div class="panel">
+                <div class="panel-title">counters</div>
+                <div class="stats">
+                    <div class="stat"><span class="counter" id="trk-size">0</span><span class="counter-label">tracked</span></div>
+                    <div class="stat"><span class="counter warn" id="trk-abandoned">0</span><span class="counter-label">abandoned</span></div>
+                    <div class="stat"><span class="counter err" id="trk-leaks">0</span><span class="counter-label">fr leaks</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="panel crt-grid scope"><canvas id="trk-canvas"></canvas></div>
+            <div class="panel">
+                <div class="panel-title">event log</div>
+                <div class="log" id="trk-log"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scene 2: Kernel gallery -->
+<div class="scene" id="scene-kernels">
+    <div class="scene-blurb">
+        Detection kernels patch resource surfaces (<code>setTimeout</code>, <code>EventTarget</code>,
+        <code>MutationObserver</code>, <code>AbortController</code>, DOM detachment) and attribute every
+        acquisition to the lite-signal owner tree. Resources acquired <b>outside any owner</b> warn in
+        real time; resources acquired <b>inside an owner</b> are auto-released on dispose -- no warning.
+        Kernels install on entering this scene and uninstall on leaving it (disposer API).
+    </div>
+    <div class="cols">
+        <div class="col">
+            <div class="panel">
+                <div class="panel-title">installed kernels</div>
+                <div class="card-stack" id="ker-list"></div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="panel">
+                <div class="panel-title">inject orphans (warn) vs owned (clean)</div>
+                <div class="btn-row">
+                    <button class="btn warn" id="ker-timer">orphan timer</button>
+                    <button class="btn warn" id="ker-listener">orphan listener</button>
+                    <button class="btn warn" id="ker-observer">orphan observer</button>
+                    <button class="btn warn" id="ker-abort">orphan abort</button>
+                    <button class="btn warn" id="ker-detach">detach watched node</button>
+                    <button class="btn" id="ker-owned">owned timer (clean)</button>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-title">event log</div>
+                <div class="log" id="ker-log"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scene 3: Specimen lab -->
+<div class="scene" id="scene-specimens">
+    <div class="scene-blurb">
+        The <b>prove it</b> pillar. Each specimen deterministically triggers one detection path, declares
+        its expected events across three channels (FR leaks / warnings / findings), and
+        <code>verify()</code> diffs expected vs actual. This is the same contract the CI harness runs
+        under <code>node --expose-gc --test</code>.
+    </div>
+    <div class="cols">
+        <div class="col">
+            <div class="panel">
+                <div class="panel-title">specimens</div>
+                <div class="card-stack" id="lab-list"></div>
+                <div class="btn-row" id="lab-all-row">
+                    <button class="btn" id="lab-run-all">composeScenario (run all)</button>
+                    <span class="badge off" id="lab-all-badge">idle</span>
+                </div>
+                <div class="hint" id="lab-gc-hint"></div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="panel">
+                <div class="panel-title">formatVerifyResult output</div>
+                <div class="output" id="lab-output">(run a specimen)</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scene 4: Audit console -->
+<div class="scene" id="scene-audit">
+    <div class="scene-blurb">
+        On-demand scanning: <code>audit()</code> asks every kernel for pending no-owner resources,
+        <code>auditByKind()</code> filters one kind, <code>remediate(finding)</code> returns the kernel's
+        fix advisory. <code>summarize()</code> + <code>formatSummary()</code> collapse a noisy event
+        stream into ranked groups.
+    </div>
+    <div class="cols">
+        <div class="col">
+            <div class="panel">
+                <div class="panel-title">inject leaky patterns</div>
+                <div class="btn-row">
+                    <button class="btn warn" id="aud-timer">orphan timer</button>
+                    <button class="btn warn" id="aud-abort">orphan abort</button>
+                    <button class="btn warn" id="aud-burst">burst x10</button>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-title">console</div>
+                <div class="btn-row">
+                    <button class="btn" id="aud-audit">audit()</button>
+                    <button class="btn" id="aud-bykind">auditByKind('timer-orphan')</button>
+                    <button class="btn find" id="aud-remediate">remediate()</button>
+                    <button class="btn find" id="aud-summary">summarize()</button>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="panel">
+                <div class="panel-title">audit output</div>
+                <div class="log tall" id="aud-log"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scene 5: Dashboard -->
+<div class="scene" id="scene-dashboard">
+    <div class="scene-blurb">
+        The packaged component: <code>createDashboardModel()</code> (ghost-safe -- exactly 2 signals,
+        zero per-event churn) + <code>createDashboard()</code> (pre-allocated row pool, textContent-only
+        writes, dirty-flag rendering behind a power-of-2 frame mask). Fire an event storm: 500 events
+        cost 500 boolean writes and <b>one</b> render.
+    </div>
+    <div class="cols">
+        <div class="col">
+            <div class="panel">
+                <div class="panel-title">feed the dashboard</div>
+                <div class="btn-row">
+                    <button class="btn warn" id="dsh-inject">orphan timer</button>
+                    <button class="btn" id="dsh-audit">audit()</button>
+                    <button class="btn err" id="dsh-storm">storm: 500 events</button>
+                    <button class="btn" id="dsh-reset">reset model</button>
+                </div>
+                <div class="hint">the storm pushes synthetic warnings straight into the model. the ring
+                buffer absorbs them; the panel renders the newest window on the next gated frame.
+                click any log row to open the owner-path inspector.</div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="panel">
+                <div class="panel-title">createDashboard() mount</div>
+                <div id="dsh-mount"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scene 6: Stress -->
+<div class="scene" id="scene-stress">
+    <div class="scene-blurb">
+        4096 track/untrack cycles batched across frames. The demo's own loop is allocation-clean:
+        hoisted noop cleanup, constant tag, pre-allocated <code>Float64Array</code> scope ring,
+        telemetry throttled by frame mask. The verdict is <code>size()</code> returning to zero.
+    </div>
+    <div class="cols">
+        <div class="col">
+            <div class="panel">
+                <div class="panel-title">stress controls</div>
+                <div class="btn-row">
+                    <button class="btn" id="str-run">run 4096 cycles</button>
+                    <button class="btn" id="str-reset">reset</button>
+                </div>
+                <div class="hint">cycle <span id="str-cycle">0</span> / 4096
+                    &nbsp;|&nbsp; size <span id="str-size">0</span></div>
+                <div class="progress"><div class="progress-fill" id="str-fill"></div></div>
+            </div>
+            <div class="panel crt-grid scope"><canvas id="str-canvas"></canvas></div>
+            <div class="panel">
+                <div class="panel-title">verdict</div>
+                <div class="log" id="str-log"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="footer">
+    <span>run: <code>npx serve .</code> from the package root, open <code>/demo/</code></span>
+    <span>CI: <code>node --expose-gc --test test/*.test.js</code></span>
+    <span>raw-fr in the browser: launch with <code>--js-flags=--expose-gc</code></span>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "@zakkster/lite-signal": "https://esm.sh/@zakkster/lite-signal@1.5.0-beta.3",
+    "@zakkster/lite-cleanup": "https://esm.sh/@zakkster/lite-cleanup@1.0.0?external=@zakkster/lite-signal",
+    "@zakkster/lite-leak": "https://esm.sh/@zakkster/lite-leak@1.0.0?external=@zakkster/lite-signal,@zakkster/lite-cleanup",
+    "@zakkster/lite-leakforge": "../Leakforge.js",
+    "@zakkster/lite-leakforge/formatters": "../formatters/Format.js",
+    "@zakkster/lite-leakforge/scenarios": "../scenarios/Scenarios.js",
+    "@zakkster/lite-leakforge/panels": "../panels/Panels.js"
+  }
+}
+</script>
+<script type="module">
+// The lite-leak / lite-cleanup entries carry ?external=@zakkster/lite-signal
+// so esm.sh leaves the peer import bare and it resolves through THIS
+// importmap. Without it, esm.sh bundles a second lite-signal instance and
+// the kernels' owner detection runs against the wrong owner tree.
+import { signal, effect } from '@zakkster/lite-signal';
+import {
+    createLeakTracker,
+    createTimerOrphanKernel,
+    createListenerOrphanKernel,
+    createObserverOrphanKernel,
+    createDetachedDomKernel,
+    createAsyncRetentionKernel,
+} from '@zakkster/lite-leak';
+import { VERSION } from '@zakkster/lite-leakforge';
+import { summarize, formatSummary, formatVerifyResult } from '@zakkster/lite-leakforge/formatters';
+import {
+    verify, composeScenario,
+    createRawFrSpecimen,
+    createTimerOrphanSpecimen,
+    createListenerOrphanSpecimen,
+    createObserverOrphanSpecimen,
+    createDetachedDomSpecimen,
+    createAsyncRetentionSpecimen,
+} from '@zakkster/lite-leakforge/scenarios';
+import { createDashboardModel, createDashboard } from '@zakkster/lite-leakforge/panels';
+
+// ==================================================================
+// Shared constants + helpers (flat module code, no scope blocks)
+// ==================================================================
+
+const HAS_GC = typeof globalThis.gc === 'function';
+const NOOP = function () {};
+const SCOPE_CAP = 256;               // power of 2
+const SCOPE_MASK = SCOPE_CAP - 1;
+const FLUSH_MASK = 7;                // pooled-log flush every 8th frame
+const SAMPLE_MASK = 3;               // scope sample every 4th frame
+const LOG_ROWS = 48;
+const LOG_CAP = 128;                 // power of 2
+const LOG_MASK = LOG_CAP - 1;
+const PH_STROKE = '#39ff14';
+const PH_FILL = 'rgba(57, 255, 20, 0.25)';
+
+const $verEl = document.getElementById('hdr-ver');
+$verEl.textContent = 'v' + VERSION;
+
+// --- pooled log factory (init-time closures only; push/flush allocate
+// --- nothing beyond the caller-provided line string, built at event time)
+function makeLog(el) {
+    const pool = new Array(LOG_ROWS);
+    for (let i = 0; i < LOG_ROWS; i++) {
+        const row = document.createElement('div');
+        row.style.display = 'none';
+        pool[i] = row;
+        el.appendChild(row);
+    }
+    const texts = new Array(LOG_CAP).fill('');
+    const kinds = new Array(LOG_CAP).fill('');
+    let head = 0;
+    let count = 0;
+    let dirty = false;
+    function push(kind, text) {
+        texts[head] = text;
+        kinds[head] = kind;
+        head = (head + 1) & LOG_MASK;
+        if (count < LOG_CAP) count++;
+        dirty = true;
+    }
+    function flush() {
+        if (!dirty) return;
+        dirty = false;
+        const n = count < LOG_ROWS ? count : LOG_ROWS;
+        for (let j = 0; j < LOG_ROWS; j++) {
+            const row = pool[j];
+            if (j < n) {
+                const idx = (head - n + j) & LOG_MASK;
+                row.textContent = texts[idx];
+                row.className = kinds[idx];
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        }
+        el.scrollTop = el.scrollHeight;
+    }
+    function clear() {
+        head = 0;
+        count = 0;
+        dirty = true;
+    }
+    return { push: push, flush: flush, clear: clear };
+}
+
+// --- scope factory: Float64Array ring, cached 2d ctx, dpr-aware
+function makeScope(canvas) {
+    const ctx = canvas.getContext('2d');
+    const ring = new Float64Array(SCOPE_CAP);
+    let head = 0;
+    let count = 0;
+    let maxVal = 1;
+    let w = 0;
+    let h = 0;
+    function resize() {
+        const dpr = window.devicePixelRatio || 1;
+        w = canvas.clientWidth;
+        h = canvas.clientHeight;
+        canvas.width = (w * dpr) | 0;
+        canvas.height = (h * dpr) | 0;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    function push(v) {
+        ring[head] = v;
+        head = (head + 1) & SCOPE_MASK;
+        if (count < SCOPE_CAP) count++;
+        if (v > maxVal) maxVal = v;
+    }
+    function draw() {
+        if (w === 0) resize();
+        ctx.clearRect(0, 0, w, h);
+        if (count < 2) return;
+        const n = count;
+        const step = w / (SCOPE_CAP - 1);
+        ctx.strokeStyle = PH_STROKE;
+        ctx.lineWidth = 1.5;
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        let lastX = 0;
+        for (let j = 0; j < n; j++) {
+            const idx = (head - n + j) & SCOPE_MASK;
+            const x = j * step;
+            const y = h - (ring[idx] / maxVal) * (h - 8) - 4;
+            if (j === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+            lastX = x;
+        }
+        ctx.stroke();
+        ctx.lineTo(lastX, h);
+        ctx.lineTo(0, h);
+        ctx.fillStyle = PH_FILL;
+        ctx.fill();
+    }
+    function reset() {
+        head = 0;
+        count = 0;
+        maxVal = 1;
+        if (w === 0) resize();
+        ctx.clearRect(0, 0, w, h);
+    }
+    return { push: push, draw: draw, reset: reset, resize: resize };
+}
+
+// ==================================================================
+// Scene switching -- kernels install on enter, uninstall on exit,
+// so patched globals never cross-contaminate between scenes.
+// ==================================================================
+
+const $tabButtons = document.querySelectorAll('#tabs button');
+const $scenes = document.querySelectorAll('.scene');
+const sceneEnter = Object.create(null);
+const sceneExit = Object.create(null);
+let activeScene = 'tracker';
+
+function switchScene(name) {
+    if (name === activeScene) return;
+    if (sceneExit[activeScene] !== undefined) sceneExit[activeScene]();
+    activeScene = name;
+    for (let j = 0; j < $tabButtons.length; j++) {
+        const b = $tabButtons[j];
+        if (b.dataset.scene === name) b.classList.add('active');
+        else b.classList.remove('active');
+    }
+    for (let j = 0; j < $scenes.length; j++) {
+        const s = $scenes[j];
+        if (s.id === 'scene-' + name) s.classList.add('active');
+        else s.classList.remove('active');
+    }
+    if (sceneEnter[name] !== undefined) sceneEnter[name]();
+}
+
+function makeTabHandler(name) {
+    return function () { switchScene(name); };
+}
+
+for (let ti = 0; ti < $tabButtons.length; ti++) {
+    $tabButtons[ti].addEventListener('click', makeTabHandler($tabButtons[ti].dataset.scene));
+}
+
+// ==================================================================
+// Scene 1: Tracker primitive
+// ==================================================================
+
+const $trkTrack = document.getElementById('trk-track');
+const $trkUntrack = document.getElementById('trk-untrack');
+const $trkAbandon = document.getElementById('trk-abandon');
+const $trkPressure = document.getElementById('trk-pressure');
+const $trkSize = document.getElementById('trk-size');
+const $trkAbandoned = document.getElementById('trk-abandoned');
+const $trkLeaks = document.getElementById('trk-leaks');
+
+const trkLog = makeLog(document.getElementById('trk-log'));
+const trkScope = makeScope(document.getElementById('trk-canvas'));
+
+const trkSize = signal(0);
+const trkAbandonedS = signal(0);
+const trkLeaksS = signal(0);
+
+// Strong refs keep tracked targets ALIVE until untrack or abandon.
+// (A tracker handle never holds the target strongly -- that would
+// defeat finalization -- so the demo must hold it.)
+const trkTargets = [];
+const trkHandles = [];
+let trkNextId = 0;
+
+const trkTracker = createLeakTracker({
+    name: 'demo-tracker',
+    onLeak: function (r) {
+        trkLeaksS.set(trkLeaksS.peek() + 1);
+        trkLog.push('leak', 'LEAK fr-path kind=' + r.kind + ' tag=' + r.tag);
+    },
+});
+
+// Single effect binds scene state to the DOM (blueprint pattern).
+effect(function () {
+    $trkSize.textContent = '' + trkSize();
+    $trkAbandoned.textContent = '' + trkAbandonedS();
+    $trkLeaks.textContent = '' + trkLeaksS();
+});
+
+$trkTrack.addEventListener('click', function () {
+    const id = trkNextId++;
+    const target = { id: id };
+    trkTargets.push(target);
+    trkHandles.push(trkTracker.track(target, NOOP, 'demo-' + id));
+    trkSize.set(trkTracker.size());
+    trkLog.push('info', 'tracked demo-' + id + ' (size=' + trkTracker.size() + ')');
+});
+
+$trkUntrack.addEventListener('click', function () {
+    if (trkHandles.length === 0) {
+        trkLog.push('info', 'nothing tracked');
+        return;
+    }
+    trkTracker.untrack(trkHandles.pop());
+    trkTargets.pop();
+    trkSize.set(trkTracker.size());
+    trkLog.push('info', 'untracked (size=' + trkTracker.size() + ')');
+});
+
+$trkAbandon.addEventListener('click', function () {
+    if (trkHandles.length === 0) {
+        trkLog.push('info', 'nothing tracked');
+        return;
+    }
+    // Drop handle AND strong ref without untrack: the leak.
+    trkHandles.pop();
+    trkTargets.pop();
+    trkAbandonedS.set(trkAbandonedS.peek() + 1);
+    trkSize.set(trkTracker.size());
+    trkLog.push('warning', 'abandoned -- target now unreachable, awaiting GC');
+});
+
+$trkPressure.addEventListener('click', function () {
+    // Deliberate cold-path allocation to encourage a GC pass.
+    if (HAS_GC) {
+        globalThis.gc();
+        trkLog.push('info', 'explicit gc() (--expose-gc detected)');
+        return;
+    }
+    let junk = null;
+    for (let p = 0; p < 64; p++) junk = new ArrayBuffer(1 << 20);
+    trkLog.push('info', 'allocated ~64MB throwaway pressure (junk=' + (junk !== null) + ')');
+});
+
+// ==================================================================
+// Scene 2: Kernel gallery
+// ==================================================================
+
+const $kerList = document.getElementById('ker-list');
+const $kerTimer = document.getElementById('ker-timer');
+const $kerListener = document.getElementById('ker-listener');
+const $kerObserver = document.getElementById('ker-observer');
+const $kerAbort = document.getElementById('ker-abort');
+const $kerDetach = document.getElementById('ker-detach');
+const $kerOwned = document.getElementById('ker-owned');
+
+const kerLog = makeLog(document.getElementById('ker-log'));
+
+const kerTracker = createLeakTracker({
+    name: 'demo-gallery',
+    onWarning: function (w) {
+        kerLog.push('warning', 'WARN ' + w.kind + ' (' + (w.reason || '?') + ')');
+    },
+    onFinding: function (f) {
+        kerLog.push('finding', 'FIND ' + f.kind + ' (' + (f.reason || '?') + ')');
+    },
+});
+
+const kerDomKernel = createDetachedDomKernel({ root: document.body, warnOnDetach: true });
+const kerKernels = [
+    createTimerOrphanKernel({ warnOnNoOwner: true }),
+    createListenerOrphanKernel({ warnOnNoOwner: true }),
+    createObserverOrphanKernel({ warnOnNoOwner: true }),
+    kerDomKernel,
+    createAsyncRetentionKernel({ warnOnNoOwner: true }),
+];
+const kerBadges = new Array(kerKernels.length);
+let kerOffs = null;
+const kerTimers = [];
+const kerListeners = [];
+const kerObservers = [];
+const kerAborts = [];
+
+// Build kernel cards at init (cold path).
+for (let ki = 0; ki < kerKernels.length; ki++) {
+    const k = kerKernels[ki];
+    const card = document.createElement('div');
+    card.className = 'kernel-card';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'kname';
+    const nameText = document.createElement('span');
+    nameText.textContent = k.name || '?';
+    const badge = document.createElement('span');
+    badge.className = 'badge off';
+    badge.textContent = 'off';
+    nameEl.appendChild(nameText);
+    nameEl.appendChild(badge);
+    card.appendChild(nameEl);
+    const detail = document.createElement('div');
+    detail.className = 'kdetail';
+    detail.textContent = 'patches: ' + (Array.isArray(k.patchSurfaces) ? k.patchSurfaces.join(', ') : '?') +
+        ' | priority: ' + (typeof k.priority === 'number' ? k.priority : 0) +
+        ' | refine: ' + (typeof k.refine === 'function' ? 'yes' : 'no') +
+        ' | audit: ' + (typeof k.audit === 'function' ? 'yes' : 'no');
+    card.appendChild(detail);
+    $kerList.appendChild(card);
+    kerBadges[ki] = badge;
+}
+
+function kerSetBadges(on) {
+    for (let ki = 0; ki < kerBadges.length; ki++) {
+        kerBadges[ki].textContent = on ? 'installed' : 'off';
+        kerBadges[ki].className = on ? 'badge ok' : 'badge off';
+    }
+}
+
+sceneEnter['kernels'] = function () {
+    if (kerOffs !== null) return;
+    kerOffs = new Array(kerKernels.length);
+    for (let ki = 0; ki < kerKernels.length; ki++) {
+        kerOffs[ki] = kerTracker.registerKernel(kerKernels[ki]);
+    }
+    kerSetBadges(true);
+    kerLog.push('info', 'kernels installed (globals patched)');
+};
+
+sceneExit['kernels'] = function () {
+    if (kerOffs === null) return;
+    // Release injected resources first, then uninstall.
+    while (kerTimers.length > 0) clearTimeout(kerTimers.pop());
+    while (kerListeners.length > 0) {
+        const rec = kerListeners.pop();
+        rec.t.removeEventListener('demo', rec.fn);
+    }
+    while (kerObservers.length > 0) kerObservers.pop().disconnect();
+    while (kerAborts.length > 0) kerAborts.pop().abort();
+    for (let ki = 0; ki < kerOffs.length; ki++) kerOffs[ki]();
+    kerOffs = null;
+    kerSetBadges(false);
+    kerLog.push('info', 'kernels uninstalled (globals restored)');
+};
+
+$kerTimer.addEventListener('click', function () {
+    kerTimers.push(setTimeout(NOOP, 999999));
+    kerLog.push('info', '> setTimeout outside any owner');
+});
+
+$kerListener.addEventListener('click', function () {
+    const t = new EventTarget();
+    const fn = function () {};
+    t.addEventListener('demo', fn);
+    kerListeners.push({ t: t, fn: fn });
+    kerLog.push('info', '> addEventListener outside any owner');
+});
+
+$kerObserver.addEventListener('click', function () {
+    const mo = new MutationObserver(NOOP);
+    mo.observe(document.body, { childList: true });
+    kerObservers.push(mo);
+    kerLog.push('info', '> new MutationObserver outside any owner');
+});
+
+$kerAbort.addEventListener('click', function () {
+    kerAborts.push(new AbortController());
+    kerLog.push('info', '> new AbortController outside any owner');
+});
+
+$kerDetach.addEventListener('click', function () {
+    const node = document.createElement('div');
+    document.body.appendChild(node);
+    kerDomKernel.watch(node, 'demo-node');
+    kerLog.push('info', '> watching a live node, now removing it...');
+    document.body.removeChild(node);
+});
+
+$kerOwned.addEventListener('click', function () {
+    // Timer set INSIDE an owner: the kernel wires onCleanup and the
+    // dispose cascade clears it. No warning is the whole point.
+    const disposeOwner = effect(function () { setTimeout(NOOP, 999999); });
+    disposeOwner();
+    kerLog.push('pass', '> owned timer set + owner disposed -> auto-cleared, no warning');
+});
+
+// ==================================================================
+// Scene 3: Specimen lab
+// ==================================================================
+
+const $labList = document.getElementById('lab-list');
+const $labRunAll = document.getElementById('lab-run-all');
+const $labAllBadge = document.getElementById('lab-all-badge');
+const $labGcHint = document.getElementById('lab-gc-hint');
+const $labOutput = document.getElementById('lab-output');
+
+const LAB_SPECIMENS = [
+    { factory: createRawFrSpecimen, name: 'raw-fr', chan: 'FR leak (kind=unknown)', needsGc: true },
+    { factory: createTimerOrphanSpecimen, name: 'timer-orphan', chan: 'warning + finding', needsGc: false },
+    { factory: createListenerOrphanSpecimen, name: 'listener-orphan', chan: 'warning', needsGc: false },
+    { factory: createObserverOrphanSpecimen, name: 'observer-orphan', chan: 'warning + finding', needsGc: false },
+    { factory: createDetachedDomSpecimen, name: 'detached-dom', chan: 'finding (audit)', needsGc: false },
+    { factory: createAsyncRetentionSpecimen, name: 'async-retention', chan: 'warning + finding', needsGc: false },
+];
+
+const labButtons = [];
+const labBadges = [];
+let labBusy = false;
+
+$labGcHint.textContent = HAS_GC
+    ? 'gc() detected -- all six specimens available, including the FR-settlement path.'
+    : 'raw-fr needs explicit gc() for FR settlement; launch the browser with --js-flags=--expose-gc to enable it. the five pre-FR specimens run everywhere.';
+
+function labSetBusy(b) {
+    labBusy = b;
+    for (let li = 0; li < labButtons.length; li++) {
+        labButtons[li].disabled = b || (LAB_SPECIMENS[li].needsGc && !HAS_GC);
+    }
+    $labRunAll.disabled = b;
+}
+
+function labRender(text, pass) {
+    $labOutput.textContent = text;
+    $labOutput.className = pass ? 'output pass' : 'output fail';
+}
+
+function makeLabRunHandler(li) {
+    return async function () {
+        if (labBusy) return;
+        labSetBusy(true);
+        const spec = LAB_SPECIMENS[li];
+        try {
+            const result = await verify(spec.factory());
+            labBadges[li].textContent = result.pass ? 'pass' : 'fail';
+            labBadges[li].className = result.pass ? 'badge ok' : 'badge fail';
+            labRender(formatVerifyResult(result), result.pass);
+        } catch (err) {
+            labBadges[li].textContent = 'error';
+            labBadges[li].className = 'badge fail';
+            labRender('verify threw: ' + err.message, false);
+        }
+        labSetBusy(false);
+    };
+}
+
+for (let li = 0; li < LAB_SPECIMENS.length; li++) {
+    const spec = LAB_SPECIMENS[li];
+    const card = document.createElement('div');
+    card.className = 'spec-card';
+    const nameEl = document.createElement('span');
+    nameEl.className = 'sname';
+    nameEl.textContent = spec.name;
+    const chanEl = document.createElement('span');
+    chanEl.className = 'schan';
+    chanEl.textContent = spec.chan + (spec.needsGc ? ' [needs gc]' : '');
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.textContent = 'verify()';
+    btn.disabled = spec.needsGc && !HAS_GC;
+    btn.addEventListener('click', makeLabRunHandler(li));
+    const badge = document.createElement('span');
+    badge.className = 'badge off';
+    badge.textContent = 'idle';
+    card.appendChild(nameEl);
+    card.appendChild(chanEl);
+    card.appendChild(btn);
+    card.appendChild(badge);
+    $labList.appendChild(card);
+    labButtons.push(btn);
+    labBadges.push(badge);
+}
+
+$labRunAll.addEventListener('click', async function () {
+    if (labBusy) return;
+    labSetBusy(true);
+    $labAllBadge.textContent = 'running';
+    $labAllBadge.className = 'badge off';
+    const specimens = [];
+    const indices = [];
+    for (let li = 0; li < LAB_SPECIMENS.length; li++) {
+        if (LAB_SPECIMENS[li].needsGc && !HAS_GC) continue;
+        specimens.push(LAB_SPECIMENS[li].factory());
+        indices.push(li);
+    }
+    try {
+        const agg = await composeScenario(specimens);
+        const lines = [];
+        lines.push('composeScenario: ' + agg.passed + ' passed, ' + agg.failed + ' failed');
+        lines.push('');
+        for (let ri = 0; ri < agg.results.length; ri++) {
+            const r = agg.results[ri];
+            const li = indices[ri];
+            labBadges[li].textContent = r.pass ? 'pass' : 'fail';
+            labBadges[li].className = r.pass ? 'badge ok' : 'badge fail';
+            lines.push(formatVerifyResult(r));
+            lines.push('');
+        }
+        $labAllBadge.textContent = agg.pass ? 'all pass' : agg.failed + ' failed';
+        $labAllBadge.className = agg.pass ? 'badge ok' : 'badge fail';
+        labRender(lines.join('\n'), agg.pass);
+    } catch (err) {
+        $labAllBadge.textContent = 'error';
+        $labAllBadge.className = 'badge fail';
+        labRender('composeScenario threw: ' + err.message, false);
+    }
+    labSetBusy(false);
+});
+
+// ==================================================================
+// Scene 4: Audit console
+// ==================================================================
+
+const $audTimer = document.getElementById('aud-timer');
+const $audAbort = document.getElementById('aud-abort');
+const $audBurst = document.getElementById('aud-burst');
+const $audAudit = document.getElementById('aud-audit');
+const $audByKind = document.getElementById('aud-bykind');
+const $audRemediate = document.getElementById('aud-remediate');
+const $audSummary = document.getElementById('aud-summary');
+
+const audLog = makeLog(document.getElementById('aud-log'));
+
+const audEvents = [];
+const audTracker = createLeakTracker({
+    name: 'demo-audit',
+    onWarning: function (w) {
+        audEvents.push(w);
+        audLog.push('warning', 'WARN ' + w.kind + ' (' + (w.reason || '?') + ')');
+    },
+    onFinding: function (f) {
+        audEvents.push(f);
+    },
+});
+
+const audKernels = [
+    createTimerOrphanKernel({ warnOnNoOwner: true }),
+    createAsyncRetentionKernel({ warnOnNoOwner: true }),
+];
+let audOffs = null;
+const audTimers = [];
+const audAborts = [];
+
+sceneEnter['audit'] = function () {
+    if (audOffs !== null) return;
+    audOffs = new Array(audKernels.length);
+    for (let ai = 0; ai < audKernels.length; ai++) {
+        audOffs[ai] = audTracker.registerKernel(audKernels[ai]);
+    }
+    audLog.push('info', 'timer-orphan + async-retention kernels installed');
+};
+
+sceneExit['audit'] = function () {
+    if (audOffs === null) return;
+    while (audTimers.length > 0) clearTimeout(audTimers.pop());
+    while (audAborts.length > 0) audAborts.pop().abort();
+    for (let ai = 0; ai < audOffs.length; ai++) audOffs[ai]();
+    audOffs = null;
+    audLog.push('info', 'kernels uninstalled');
+};
+
+$audTimer.addEventListener('click', function () {
+    audTimers.push(setTimeout(NOOP, 999999));
+    audLog.push('info', '> orphan timer injected');
+});
+
+$audAbort.addEventListener('click', function () {
+    audAborts.push(new AbortController());
+    audLog.push('info', '> orphan AbortController injected');
+});
+
+$audBurst.addEventListener('click', function () {
+    for (let bi = 0; bi < 10; bi++) {
+        audTimers.push(setTimeout(NOOP, 999999));
+    }
+    audLog.push('info', '> burst: 10 orphan timers injected');
+});
+
+$audAudit.addEventListener('click', function () {
+    audLog.push('info', '--- audit() ---');
+    const findings = audTracker.audit();
+    if (findings.length === 0) audLog.push('info', '(no findings)');
+    for (let fi = 0; fi < findings.length; fi++) {
+        audLog.push('finding', 'FIND ' + findings[fi].kind + ' (' + (findings[fi].reason || '?') + ')');
+    }
+});
+
+$audByKind.addEventListener('click', function () {
+    audLog.push('info', "--- auditByKind('timer-orphan') ---");
+    const findings = audTracker.auditByKind('timer-orphan');
+    if (findings.length === 0) audLog.push('info', '(no timer-orphan findings)');
+    for (let fi = 0; fi < findings.length; fi++) {
+        audLog.push('finding', 'FIND ' + findings[fi].kind + ' (' + (findings[fi].reason || '?') + ')');
+    }
+});
+
+$audRemediate.addEventListener('click', function () {
+    const findings = audTracker.audit();
+    if (findings.length === 0) {
+        audLog.push('info', 'nothing to remediate -- inject something first');
+        return;
+    }
+    audLog.push('info', '--- remediate() ---');
+    for (let fi = 0; fi < findings.length; fi++) {
+        audLog.push('pass', audTracker.remediate(findings[fi]));
+    }
+});
+
+$audSummary.addEventListener('click', function () {
+    if (audEvents.length === 0) {
+        audLog.push('info', 'no events yet -- inject + audit first');
+        return;
+    }
+    audLog.push('info', '--- summarize(' + audEvents.length + ' events) ---');
+    const groups = summarize(audEvents);
+    const lines = formatSummary(groups).split('\n');
+    for (let si = 0; si < lines.length; si++) audLog.push('finding', lines[si]);
+});
+
+// ==================================================================
+// Scene 5: Dashboard (the packaged component)
+// ==================================================================
+
+const $dshInject = document.getElementById('dsh-inject');
+const $dshAudit = document.getElementById('dsh-audit');
+const $dshStorm = document.getElementById('dsh-storm');
+const $dshReset = document.getElementById('dsh-reset');
+const $dshMount = document.getElementById('dsh-mount');
+
+const dshModel = createDashboardModel({ logCapacity: 256 });
+const dshTracker = createLeakTracker({
+    name: 'demo-dashboard',
+    onLeak: dshModel.onLeak,
+    onWarning: dshModel.onWarning,
+    onFinding: dshModel.onFinding,
+    onError: dshModel.onError,
+});
+const dshKernels = [
+    createTimerOrphanKernel({ warnOnNoOwner: true }),
+    createAsyncRetentionKernel({ warnOnNoOwner: true }),
+];
+let dshOffs = null;
+const dshTimers = [];
+
+createDashboard({
+    container: $dshMount,
+    model: dshModel,
+    kernels: dshKernels,
+    maxLogRows: 60,
+});
+
+sceneEnter['dashboard'] = function () {
+    if (dshOffs !== null) return;
+    dshOffs = new Array(dshKernels.length);
+    for (let di = 0; di < dshKernels.length; di++) {
+        dshOffs[di] = dshTracker.registerKernel(dshKernels[di]);
+    }
+};
+
+sceneExit['dashboard'] = function () {
+    if (dshOffs === null) return;
+    while (dshTimers.length > 0) clearTimeout(dshTimers.pop());
+    for (let di = 0; di < dshOffs.length; di++) dshOffs[di]();
+    dshOffs = null;
+};
+
+$dshInject.addEventListener('click', function () {
+    dshTimers.push(setTimeout(NOOP, 999999));
+});
+
+$dshAudit.addEventListener('click', function () {
+    dshTracker.audit();
+});
+
+const DSH_STORM_KINDS = ['timer-orphan', 'listener-orphan', 'async-retention', 'observer-orphan'];
+
+$dshStorm.addEventListener('click', function () {
+    // 500 synthetic events. Each push is one ring write + one signal
+    // bump + one dirty-flag flip in the panel; the render happens ONCE
+    // on the next gated frame. Fresh event objects on purpose -- the
+    // model retains raw refs in its ring, so sharing one mutable
+    // object would alias every entry to the last write.
+    for (let si = 0; si < 500; si++) {
+        dshModel.onWarning({ kind: DSH_STORM_KINDS[si & 3], reason: 'no-owner-set' });
+    }
+});
+
+$dshReset.addEventListener('click', function () {
+    dshModel.reset();
+});
+
+// ==================================================================
+// Scene 6: Stress
+// ==================================================================
+
+const $strRun = document.getElementById('str-run');
+const $strReset = document.getElementById('str-reset');
+const $strCycle = document.getElementById('str-cycle');
+const $strSize = document.getElementById('str-size');
+const $strFill = document.getElementById('str-fill');
+
+const strLog = makeLog(document.getElementById('str-log'));
+const strScope = makeScope(document.getElementById('str-canvas'));
+
+const STR_TOTAL = 4096;
+const STR_BATCH = 64;
+const STR_TAG = 'stress';
+
+const strTracker = createLeakTracker({ name: 'demo-stress' });
+let strRunning = false;
+let strCycle = 0;
+let strBatchNo = 0;
+let strStartTs = 0;
+
+function strRunBatch() {
+    const end = strCycle + STR_BATCH < STR_TOTAL ? strCycle + STR_BATCH : STR_TOTAL;
+    for (; strCycle < end; strCycle++) {
+        // The target IS the workload; cleanup + tag are hoisted
+        // constants -- no closures, no string building per cycle.
+        const target = { i: strCycle };
+        strTracker.untrack(strTracker.track(target, NOOP, STR_TAG));
+    }
+    strBatchNo++;
+    const sz = strTracker.size();
+    strScope.push(sz);
+    strScope.draw();
+    if ((strBatchNo & FLUSH_MASK) === 0) {
+        // ~7.5Hz telemetry (one batch per frame at 60fps).
+        $strCycle.textContent = '' + strCycle;
+        $strSize.textContent = '' + sz;
+        $strFill.style.transform = 'scaleX(' + (strCycle / STR_TOTAL) + ')';
+    }
+    if (strCycle < STR_TOTAL) {
+        requestAnimationFrame(strRunBatch);
+    } else {
+        strRunning = false;
+        $strRun.disabled = false;
+        const ms = performance.now() - strStartTs;
+        const finalSize = strTracker.size();
+        $strCycle.textContent = '' + strCycle;
+        $strSize.textContent = '' + finalSize;
+        $strFill.style.transform = 'scaleX(1)';
+        if (finalSize === 0) {
+            strLog.push('pass', 'CLEAN: ' + STR_TOTAL + ' cycles in ' + ms.toFixed(1) +
+                'ms, size() returned to 0');
+        } else {
+            strLog.push('leak', 'LEAK: ' + finalSize + ' records remaining after ' +
+                STR_TOTAL + ' cycles');
+        }
+    }
+}
+
+$strRun.addEventListener('click', function () {
+    if (strRunning) return;
+    strRunning = true;
+    $strRun.disabled = true;
+    strCycle = 0;
+    strBatchNo = 0;
+    strScope.reset();
+    strStartTs = performance.now();
+    strLog.push('info', 'running ' + STR_TOTAL + ' track/untrack cycles...');
+    requestAnimationFrame(strRunBatch);
+});
+
+$strReset.addEventListener('click', function () {
+    if (strRunning) return;
+    strCycle = 0;
+    strBatchNo = 0;
+    strScope.reset();
+    strLog.clear();
+    $strCycle.textContent = '0';
+    $strSize.textContent = '0';
+    $strFill.style.transform = 'scaleX(0)';
+    strLog.push('info', 'reset');
+});
+
+// ==================================================================
+// Main loop: one rAF for scope sampling + pooled-log flushing.
+// Hot path allocates nothing -- masks, cached refs, dirty flags.
+// ==================================================================
+
+let mainFrame = 0;
+
+function mainTick() {
+    mainFrame++;
+    if ((mainFrame & SAMPLE_MASK) === 0 && activeScene === 'tracker') {
+        trkScope.push(trkTracker.size());
+        trkScope.draw();
+    }
+    if ((mainFrame & FLUSH_MASK) === 0) {
+        trkLog.flush();
+        kerLog.flush();
+        audLog.flush();
+        strLog.flush();
+    }
+    requestAnimationFrame(mainTick);
+}
+
+window.addEventListener('resize', function () {
+    trkScope.resize();
+    strScope.resize();
+});
+
+requestAnimationFrame(mainTick);
+</script>
+</body>
+</html>

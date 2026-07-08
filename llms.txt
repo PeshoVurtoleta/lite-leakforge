@@ -1,0 +1,58 @@
+# @zakkster/lite-leakforge
+
+> Leak specimens, CI harness, and diagnostic toolkit for @zakkster/lite-leak.
+
+## What this package does
+
+lite-leakforge is the product layer above lite-leak's leak tracker.
+It provides three capabilities:
+
+1. SPECIMENS: Deterministic leak scenarios that trigger each of
+   lite-leak's six kernels. Each specimen declares expected events
+   across three detection channels (FR leak reports, warnings,
+   findings). The verify() contract diffs expected vs actual.
+
+2. CI HARNESS: assertNoLeaks(fn) and leakSuite() for node:test.
+   Exit codes: 0=clean, 1=confirmed leak, 3=inconclusive.
+   Precedence: leaks/findings -> 1 even if FR did not settle;
+   3 only for evidence-free unsettled runs. Requires --expose-gc.
+   settleFinalizers() handles FinalizationRegistry non-determinism
+   with bounded retry. Kernel teardown is exception-safe (try/finally
+   around user code).
+
+3. FORMATTERS + DASHBOARD: ASCII formatters for leak reports,
+   findings, warnings, and owner paths. Dashboard data model with
+   ghost-safe signal design (exactly 2 signals, zero per-event churn)
+   and LAZY entry formatting (text/ownerPath/label are memoized
+   getters -- zero formatting cost per event). createDashboard()
+   renders the newest maxLogRows as a sliding window behind a
+   dirty flag + power-of-2 frame mask.
+
+## Key exports
+
+```
+import { assertNoLeaks, leakSuite, createLeakGate } from '@zakkster/lite-leakforge/harness';
+import { verify, composeScenario, createTimerOrphanSpecimen } from '@zakkster/lite-leakforge/scenarios';
+import { formatReport, formatOwnerPath, summarize } from '@zakkster/lite-leakforge/formatters';
+import { createDashboardModel } from '@zakkster/lite-leakforge/panels';
+```
+
+## Specimen names
+
+raw-fr, timer-orphan, listener-orphan, observer-orphan,
+detached-dom, async-retention.
+
+## Dependencies
+
+- @zakkster/lite-leak ^1.0.0 (runtime)
+- @zakkster/lite-signal >=1.5.0-beta.3 <2.0.0 (peer)
+
+## Conventions
+
+- Single-file ESM modules, MIT license, sideEffects: false
+- node:test only (never vitest)
+- ASCII-only source (no box-drawing chars in output)
+- Verify contract runs: inject -> audit -> release -> settle
+- verify() THROWS for needsSettle specimens without --expose-gc
+  (env error, not a detection FAIL); pre-FR specimens run anywhere
+- Subpath exports ship their own .d.ts files

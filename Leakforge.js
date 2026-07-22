@@ -7,7 +7,7 @@
  * MIT License
  */
 
-export const VERSION = '1.1.0';
+export const VERSION = '1.2.0';
 
 // Harness
 export { settleFinalizers, settleTracker } from './harness/Settle.js';
@@ -52,4 +52,7 @@ export {
   createDetachedDomSpecimen,
   createAsyncRetentionSpecimen,
   createRafOrphanSpecimen,
+  createWorkerOrphanSpecimen,
+  createAudioNodeSpecimen,
+  createSocketOrphanSpecimen,
 } from './scenarios/Scenarios.js';

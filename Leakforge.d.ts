@@ -170,6 +170,9 @@ export declare function createAsyncRetentionSpecimen(): Specimen;
  * patches no global. Requires @zakkster/lite-leak >= 1.1.0.
  */
 export declare function createRafOrphanSpecimen(): Specimen;
+export declare function createWorkerOrphanSpecimen(): Specimen;
+export declare function createAudioNodeSpecimen(): Specimen;
+export declare function createSocketOrphanSpecimen(): Specimen;
 
 // -----------------------------------------------------------------
 // Panels

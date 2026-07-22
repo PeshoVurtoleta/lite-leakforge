@@ -15,3 +15,6 @@ export { createObserverOrphanSpecimen } from './ObserverOrphan.js';
 export { createDetachedDomSpecimen } from './DetachedDom.js';
 export { createAsyncRetentionSpecimen } from './AsyncRetention.js';
 export { createRafOrphanSpecimen } from './RafOrphan.js';
+export { createWorkerOrphanSpecimen } from './WorkerOrphan.js';
+export { createAudioNodeSpecimen } from './AudioNode.js';
+export { createSocketOrphanSpecimen } from './SocketOrphan.js';

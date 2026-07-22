@@ -40,6 +40,9 @@ import {
   createDetachedDomSpecimen,
   createAsyncRetentionSpecimen,
   createRafOrphanSpecimen,
+  createWorkerOrphanSpecimen,
+  createAudioNodeSpecimen,
+  createSocketOrphanSpecimen,
 } from '../scenarios/Scenarios.js';
 
 export { EXIT_CLEAN, EXIT_LEAK, EXIT_INCONCLUSIVE };
@@ -84,6 +87,9 @@ const BUILTIN = {
   'detached-dom': createDetachedDomSpecimen,
   'async-retention': createAsyncRetentionSpecimen,
   'raf-orphan': createRafOrphanSpecimen,
+  'worker-orphan': createWorkerOrphanSpecimen,
+  'audio-node': createAudioNodeSpecimen,
+  'socket-orphan': createSocketOrphanSpecimen,
 };
 
 /**

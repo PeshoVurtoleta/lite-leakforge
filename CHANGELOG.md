@@ -2,6 +2,37 @@
 
 All notable changes to `@zakkster/lite-leakforge` are documented here.
 
+## 1.2.0 (2026-07-19)
+
+**Three resource specimens.** Acceptance coverage for lite-leak 1.2.0's
+`worker-orphan`, `audio-node` and `socket-orphan` kernels. Kernel and specimen
+ship together: a kernel without an acceptance specimen is an untested claim.
+
+### Added
+
+- **`createWorkerOrphanSpecimen()`** -- a Worker constructed at module scope
+  from a `blob:` URL that is never revoked. Asserts one `no-owner-set` warning
+  and two findings (`no-owner-worker-live`, `blob-url-unrevoked`). It pins the
+  *failure* of a pattern the ecosystem already gets right: `@zakkster/lite-worker`
+  revokes on the line after construction, which is correct.
+- **`createAudioNodeSpecimen()`** -- a scheduled source connected to the graph
+  and started at module scope. Asserts one `no-owner-connect` warning and both
+  halves of an audio leak from a single injection
+  (`no-owner-node-connected`, `source-started-not-stopped`).
+- **`createSocketOrphanSpecimen()`** -- a WebSocket left OPEN with no owner.
+  Asserts `no-owner-open` and `no-owner-socket-open`. The mock carries real
+  `readyState` constants, so the kernel's "a connection the peer already closed
+  is not a leak" rule is exercised by state rather than bookkeeping.
+- All three registered as CLI built-ins (`--specimens worker-orphan`, etc.).
+  `leakforge --specimens` now runs 10/10.
+
+Every host is specimen-local: Node has no Worker, WebAudio or WebSocket, and a
+specimen must never patch a global it shares with the test runner.
+
+### Changed
+
+- Requires `@zakkster/lite-leak` `^1.2.0`.
+
 ## 1.1.0 (2026-07-15)
 
 CLI + raf-orphan specimen. Pairs with `@zakkster/lite-leak` v1.1.0

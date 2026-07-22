@@ -77,8 +77,9 @@ describe('parseArgs', () => {
 describe('builtinSpecimens', () => {
   it('returns all when no names given', () => {
     const all = builtinSpecimens();
-    assert.ok(all.length >= 7, 'at least 7 built-in specimens');
-        assert.ok(all.some((s) => s.name === 'raf-orphan'), 'includes raf-orphan');
+    assert.ok(all.length >= 10, 'at least 10 built-in specimens');
+    assert.ok(all.some((s) => s.name === 'worker-orphan'), 'includes worker-orphan');
+    assert.ok(all.some((s) => s.name === 'raf-orphan'), 'includes raf-orphan');
   });
 
   it('returns the named subset', () => {

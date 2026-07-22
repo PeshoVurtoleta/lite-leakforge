@@ -7,6 +7,9 @@ export {
   createListenerOrphanSpecimen, createObserverOrphanSpecimen,
   createDetachedDomSpecimen, createAsyncRetentionSpecimen,
   createRafOrphanSpecimen,
+  createWorkerOrphanSpecimen,
+  createAudioNodeSpecimen,
+  createSocketOrphanSpecimen,
 } from '../Leakforge.js';
 export type {
   Specimen, ExpectedEvent, ChannelResult, VerifyResult,

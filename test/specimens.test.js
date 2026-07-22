@@ -17,6 +17,9 @@ import {
   createDetachedDomSpecimen,
   createAsyncRetentionSpecimen,
   createRafOrphanSpecimen,
+  createWorkerOrphanSpecimen,
+  createAudioNodeSpecimen,
+  createSocketOrphanSpecimen,
 } from '../scenarios/Scenarios.js';
 
 const HAS_GC = typeof globalThis.gc === 'function';
@@ -227,6 +230,63 @@ describe('raf-orphan specimen', () => {
 
 
 // -----------------------------------------------------------------
+// Specimen: worker-orphan (1.2.0)
+// -----------------------------------------------------------------
+
+describe('worker-orphan specimen', () => {
+  it('fires warning + findings for an ownerless worker with an unrevoked blob URL', async () => {
+    const specimen = createWorkerOrphanSpecimen();
+    const result = await verify(specimen);
+    assert.equal(result.pass, true, formatFailure(result));
+    assert.equal(result.warnings.actual.length, 1);
+    assert.equal(result.warnings.actual[0].kind, 'worker-orphan');
+    assert.equal(result.warnings.actual[0].reason, 'no-owner-set');
+    // Two findings: the live worker, and its object URL never revoked.
+    const reasons = result.findings.actual.map((f) => f.reason).sort();
+    assert.deepEqual(reasons, ['blob-url-unrevoked', 'no-owner-worker-live']);
+    assert.equal(result.leaks.actual.length, 0);
+    assert.equal(result.settleResult, null);
+  });
+});
+
+// -----------------------------------------------------------------
+// Specimen: audio-node (1.2.0)
+// -----------------------------------------------------------------
+
+describe('audio-node specimen', () => {
+  it('fires warning + findings for a connected, started, ownerless source', async () => {
+    const specimen = createAudioNodeSpecimen();
+    const result = await verify(specimen);
+    assert.equal(result.pass, true, formatFailure(result));
+    assert.equal(result.warnings.actual.length, 1);
+    assert.equal(result.warnings.actual[0].kind, 'audio-node');
+    assert.equal(result.warnings.actual[0].reason, 'no-owner-connect');
+    // Both halves of an audio leak: still in the graph, still audible.
+    const reasons = result.findings.actual.map((f) => f.reason).sort();
+    assert.deepEqual(reasons, ['no-owner-node-connected', 'source-started-not-stopped']);
+    assert.equal(result.leaks.actual.length, 0);
+  });
+});
+
+// -----------------------------------------------------------------
+// Specimen: socket-orphan (1.2.0)
+// -----------------------------------------------------------------
+
+describe('socket-orphan specimen', () => {
+  it('fires warning + finding for an ownerless open socket', async () => {
+    const specimen = createSocketOrphanSpecimen();
+    const result = await verify(specimen);
+    assert.equal(result.pass, true, formatFailure(result));
+    assert.equal(result.warnings.actual.length, 1);
+    assert.equal(result.warnings.actual[0].reason, 'no-owner-open');
+    assert.equal(result.findings.actual.length, 1);
+    assert.equal(result.findings.actual[0].kind, 'socket-orphan');
+    assert.equal(result.findings.actual[0].reason, 'no-owner-socket-open');
+    assert.equal(result.leaks.actual.length, 0);
+  });
+});
+
+// -----------------------------------------------------------------
 // composeScenario
 // -----------------------------------------------------------------
 
@@ -239,13 +299,16 @@ describe('composeScenario', () => {
       createDetachedDomSpecimen(),
       createAsyncRetentionSpecimen(),
       createRafOrphanSpecimen(),
+      createWorkerOrphanSpecimen(),
+      createAudioNodeSpecimen(),
+      createSocketOrphanSpecimen(),
     ]);
     assert.equal(result.pass, true, formatCompose(result));
-    assert.equal(result.passed, 6);
+    assert.equal(result.passed, 9);
     assert.equal(result.failed, 0);
   });
 
-  it('runs all 7 specimens including raw-fr', { skip: !HAS_GC && 'requires --expose-gc' }, async () => {
+  it('runs all 10 specimens including raw-fr', { skip: !HAS_GC && 'requires --expose-gc' }, async () => {
     const result = await composeScenario([
       createRawFrSpecimen(),
       createTimerOrphanSpecimen(),
@@ -254,9 +317,12 @@ describe('composeScenario', () => {
       createDetachedDomSpecimen(),
       createAsyncRetentionSpecimen(),
       createRafOrphanSpecimen(),
+      createWorkerOrphanSpecimen(),
+      createAudioNodeSpecimen(),
+      createSocketOrphanSpecimen(),
     ]);
     assert.equal(result.pass, true, formatCompose(result));
-    assert.equal(result.passed, 7);
+    assert.equal(result.passed, 10);
     assert.equal(result.failed, 0);
   });
 });

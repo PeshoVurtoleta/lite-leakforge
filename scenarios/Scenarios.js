@@ -18,3 +18,4 @@ export { createRafOrphanSpecimen } from './RafOrphan.js';
 export { createWorkerOrphanSpecimen } from './WorkerOrphan.js';
 export { createAudioNodeSpecimen } from './AudioNode.js';
 export { createSocketOrphanSpecimen } from './SocketOrphan.js';
+export { createGlResourceOrphanSpecimen } from './GlResourceOrphan.js';

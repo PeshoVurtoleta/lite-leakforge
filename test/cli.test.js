@@ -77,7 +77,7 @@ describe('parseArgs', () => {
 describe('builtinSpecimens', () => {
   it('returns all when no names given', () => {
     const all = builtinSpecimens();
-    assert.ok(all.length >= 10, 'at least 10 built-in specimens');
+    assert.ok(all.length >= 11, 'at least 11 built-in specimens');
     assert.ok(all.some((s) => s.name === 'worker-orphan'), 'includes worker-orphan');
     assert.ok(all.some((s) => s.name === 'raf-orphan'), 'includes raf-orphan');
   });

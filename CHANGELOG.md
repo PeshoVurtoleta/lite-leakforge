@@ -2,6 +2,30 @@
 
 All notable changes to `@zakkster/lite-leakforge` are documented here.
 
+## 1.3.0 (2026-07-21)
+
+**GPU-resource specimen.** Acceptance coverage for lite-leak 1.3.0's
+`gl-resource-orphan` kernel. Kernel and specimen ship together.
+
+### Added
+
+- **`createGlResourceOrphanSpecimen()`** -- a buffer and a texture allocated at
+  module scope on a live mock context and never deleted. Asserts two
+  `no-owner-create` warnings and two `no-owner-resource-live` findings, and
+  pins that the findings carry distinct `resourceKind` values: a kernel that
+  collapsed every GPU object into one bucket would still pass a
+  single-resource specimen.
+- Registered as a CLI built-in (`--specimens gl-resource-orphan`).
+  `leakforge --specimens` now runs 11/11.
+
+The mock context keeps `isContextLost()` false so the resources stay
+reportable; the lost-context path is the kernel's documented "already
+reclaimed, not a leak" case and is covered by its own unit test.
+
+### Changed
+
+- Requires `@zakkster/lite-leak` `^1.3.0`.
+
 ## 1.2.0 (2026-07-19)
 
 **Three resource specimens.** Acceptance coverage for lite-leak 1.2.0's

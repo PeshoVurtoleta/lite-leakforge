@@ -20,6 +20,7 @@ import {
   createWorkerOrphanSpecimen,
   createAudioNodeSpecimen,
   createSocketOrphanSpecimen,
+  createGlResourceOrphanSpecimen,
 } from '../scenarios/Scenarios.js';
 
 const HAS_GC = typeof globalThis.gc === 'function';
@@ -287,6 +288,31 @@ describe('socket-orphan specimen', () => {
 });
 
 // -----------------------------------------------------------------
+// Specimen: gl-resource-orphan (1.3.0)
+// -----------------------------------------------------------------
+
+describe('gl-resource-orphan specimen', () => {
+  it('fires warnings + findings for undeleted GPU resources', async () => {
+    const specimen = createGlResourceOrphanSpecimen();
+    const result = await verify(specimen);
+    assert.equal(result.pass, true, formatFailure(result));
+    // One warning per resource created outside an owner.
+    assert.equal(result.warnings.actual.length, 2);
+    for (const w of result.warnings.actual) {
+      assert.equal(w.kind, 'gl-resource-orphan');
+      assert.equal(w.reason, 'no-owner-create');
+    }
+    // Both resources still allocated on a live context, reported by kind.
+    assert.equal(result.findings.actual.length, 2);
+    const kinds = result.findings.actual.map((f) => f.resourceKind).sort();
+    assert.deepEqual(kinds, ['buffer', 'texture'],
+      'resourceKind must distinguish GPU object types');
+    assert.equal(result.leaks.actual.length, 0);
+    assert.equal(result.settleResult, null);
+  });
+});
+
+// -----------------------------------------------------------------
 // composeScenario
 // -----------------------------------------------------------------
 
@@ -302,13 +328,14 @@ describe('composeScenario', () => {
       createWorkerOrphanSpecimen(),
       createAudioNodeSpecimen(),
       createSocketOrphanSpecimen(),
+      createGlResourceOrphanSpecimen(),
     ]);
     assert.equal(result.pass, true, formatCompose(result));
-    assert.equal(result.passed, 9);
+    assert.equal(result.passed, 10);
     assert.equal(result.failed, 0);
   });
 
-  it('runs all 10 specimens including raw-fr', { skip: !HAS_GC && 'requires --expose-gc' }, async () => {
+  it('runs all 11 specimens including raw-fr', { skip: !HAS_GC && 'requires --expose-gc' }, async () => {
     const result = await composeScenario([
       createRawFrSpecimen(),
       createTimerOrphanSpecimen(),
@@ -320,9 +347,10 @@ describe('composeScenario', () => {
       createWorkerOrphanSpecimen(),
       createAudioNodeSpecimen(),
       createSocketOrphanSpecimen(),
+      createGlResourceOrphanSpecimen(),
     ]);
     assert.equal(result.pass, true, formatCompose(result));
-    assert.equal(result.passed, 10);
+    assert.equal(result.passed, 11);
     assert.equal(result.failed, 0);
   });
 });

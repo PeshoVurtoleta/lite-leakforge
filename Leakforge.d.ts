@@ -173,6 +173,7 @@ export declare function createRafOrphanSpecimen(): Specimen;
 export declare function createWorkerOrphanSpecimen(): Specimen;
 export declare function createAudioNodeSpecimen(): Specimen;
 export declare function createSocketOrphanSpecimen(): Specimen;
+export declare function createGlResourceOrphanSpecimen(): Specimen;
 
 // -----------------------------------------------------------------
 // Panels

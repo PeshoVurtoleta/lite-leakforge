@@ -10,6 +10,7 @@ export {
   createWorkerOrphanSpecimen,
   createAudioNodeSpecimen,
   createSocketOrphanSpecimen,
+  createGlResourceOrphanSpecimen,
 } from '../Leakforge.js';
 export type {
   Specimen, ExpectedEvent, ChannelResult, VerifyResult,

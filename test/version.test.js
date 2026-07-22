@@ -13,6 +13,6 @@ describe('VERSION', () => {
   it('matches package.json', () => {
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     assert.equal(VERSION, pkg.version);
-    assert.equal(VERSION, '1.2.0');
+    assert.equal(VERSION, '1.3.0');
   });
 });

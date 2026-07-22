@@ -1,6 +1,6 @@
 {
   "name": "@zakkster/lite-leakforge",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Leak specimens, CI harness, and dashboard for @zakkster/lite-leak. Zero-GC diagnostic toolkit.",
   "type": "module",
   "main": "./Leakforge.js",
@@ -41,6 +41,7 @@
   "files": [
     "Leakforge.js",
     "Leakforge.d.ts",
+    "bin/",
     "harness/",
     "formatters/",
     "scenarios/",
@@ -83,12 +84,15 @@
     "url": "https://github.com/sponsors/PeshoVurtoleta"
   },
   "dependencies": {
-    "@zakkster/lite-leak": "^1.0.0"
+    "@zakkster/lite-leak": "^1.1.0"
   },
   "peerDependencies": {
     "@zakkster/lite-signal": ">=1.5.0-beta.3 <2.0.0"
   },
   "devDependencies": {
     "@zakkster/lite-signal": "^1.5.0-beta.3"
+  },
+  "bin": {
+    "leakforge": "./bin/leakforge.js"
   }
 }

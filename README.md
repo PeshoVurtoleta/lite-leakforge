@@ -22,9 +22,9 @@ and **gates it**.
   actual across leak reports, warnings, and findings.
 - **Show it** -- ASCII formatters, a ghost-safe dashboard data model,
   and a 5-scene oscilloscope demo.
-- **Gate it** -- a CI harness with `assertNoLeaks()` and `leakSuite()`
-  that produces exit 0 (clean), exit 1 (confirmed leak), or exit 3
-  (inconclusive / recapture).
+- **Gate it** -- a CI harness with `assertNoLeaks()` and `leakSuite()`,
+  plus a `npx leakforge` CLI, all producing exit 0 (clean), exit 1
+  (confirmed leak), or exit 3 (inconclusive / recapture).
 
 ```
 npm install @zakkster/lite-leakforge
@@ -53,6 +53,39 @@ describe('my library', () => {
   });
 });
 ```
+
+### CLI (`npx leakforge`)
+
+Run a leak-suite file in CI and let the exit code gate the build. A suite
+file default-exports `{ name, checks: [{ name, run(tracker) }], options? }`;
+each check runs under one shared gate.
+
+```js
+// app.leak.mjs
+export default {
+  name: 'my-app',
+  checks: [
+    { name: 'mounts and unmounts cleanly', run: () => { mount(); unmount(); } },
+    { name: 'detail panel', run: (tracker) => {
+        const panel = openDetailPanel();
+        tracker.track(panel, () => {}, 'detail-panel');
+        closeDetailPanel(panel);
+    } },
+  ],
+};
+```
+
+```
+npx leakforge app.leak.mjs            # 0 clean, 1 leak, 3 inconclusive
+npx leakforge app.leak.mjs --json leaks.json   # + machine-readable artifact
+npx leakforge --specimens             # verify every built-in specimen (kernel acceptance)
+npx leakforge --specimens raf-orphan  # a single specimen
+```
+
+The gate needs manual GC; the CLI re-execs itself with `--expose-gc`
+automatically, so plain `npx leakforge` works. Exit codes aggregate across
+checks with evidence-wins precedence: any confirmed leak wins the run.
+`--specimens` completes the CLI trilogy with litecap and gc-profiler.
 
 ### leakSuite (node:test-native)
 
@@ -163,6 +196,17 @@ expectedWarnings, expectedFindings, needsSettle, inject, release }`.
 | `createObserverOrphanSpecimen()` | observer-orphan | warning `no-owner-set`, finding `no-owner-pending` |
 | `createDetachedDomSpecimen()` | detached-dom | finding `detached-at-audit` |
 | `createAsyncRetentionSpecimen()` | async-retention | warning `no-owner-set`, finding `no-owner-pending` |
+| `createRafOrphanSpecimen()` | raf-orphan | warning `no-owner-set`, finding `no-owner-loop-armed` |
+| `createWorkerOrphanSpecimen()` | worker-orphan | warning `no-owner-set`, findings `no-owner-worker-live` + `blob-url-unrevoked` |
+| `createAudioNodeSpecimen()` | audio-node | warning `no-owner-connect`, findings `no-owner-node-connected` + `source-started-not-stopped` |
+| `createSocketOrphanSpecimen()` | socket-orphan | warning `no-owner-open`, finding `no-owner-socket-open` |
+| `createGlResourceOrphanSpecimen()` | gl-resource-orphan | 2x warning `no-owner-create`, 2x finding `no-owner-resource-live` (distinct `resourceKind`) |
+
+The 1.2.0 resource specimens (worker, audio, socket) each own a specimen-local mock host for the same reason as raf-orphan -- Node has none of those globals, and a specimen must never patch a global it shares with the test runner.
+
+The raf-orphan specimen needs no DOM: it drives a specimen-local
+`requestAnimationFrame` host, so it runs anywhere and patches no shared
+global. Requires `@zakkster/lite-leak >= 1.1.0`.
 
 ### Exit codes
 

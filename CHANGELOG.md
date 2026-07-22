@@ -2,6 +2,46 @@
 
 All notable changes to `@zakkster/lite-leakforge` are documented here.
 
+## 1.1.0 (2026-07-15)
+
+CLI + raf-orphan specimen. Pairs with `@zakkster/lite-leak` v1.1.0
+(raf-orphan kernel) and completes the CLI trilogy alongside litecap and
+gc-profiler.
+
+### CLI
+
+- `npx leakforge <suite-file>` -- run a leak-suite file's checks under a
+  single `createLeakGate`, print an ASCII report, and exit with the gate
+  codes (0 clean, 1 leak, 3 inconclusive). A suite file default-exports
+  `{ name, checks: [{ name, run(tracker) }], options? }`. The exit code is
+  aggregated across checks with the gate's evidence-wins precedence: any
+  confirmed leak -> 1; else any evidence-free unsettled run -> 3; else 0.
+- `npx leakforge --specimens [name...]` -- verify the built-in specimens
+  (kernel acceptance): 0 all pass, 1 a specimen regressed, 3 an
+  environment error (e.g. a `needsSettle` specimen without `--expose-gc`).
+- `--json <path>` -- write a machine-readable CI artifact: slim events
+  (kind/reason/tag), per-check exit codes, settle state, and a summary.
+  No stacks, so it diffs cleanly across runs.
+- The gate needs manual GC, so the executable re-execs itself once with
+  `--expose-gc` (env-guarded against loops); `npx leakforge` just works.
+  `--help`/`--version` skip the relaunch. Usage errors exit 2.
+- Core logic lives in `bin/Cli.js` (pure, unit-tested); `bin/leakforge.js`
+  is the thin I/O + exit wrapper.
+
+### Specimens
+
+- `createRafOrphanSpecimen()` -- acceptance test for lite-leak's
+  raf-orphan kernel. A `requestAnimationFrame` loop scheduled with no
+  owner: `no-owner-set` warning at schedule time, `no-owner-loop-armed`
+  finding at audit time, zero leaks. Pre-FR channels only
+  (`needsSettle: false`), so it runs without `--expose-gc`. Uses a
+  specimen-local rAF host -- no DOM, and no shared global is patched.
+  Seven specimens now ship.
+
+### Dependencies
+
+- Bumped `@zakkster/lite-leak` to `^1.1.0` (raf-orphan kernel).
+
 ## 1.0.0 (2026-07-08)
 
 Initial stable release. Leak specimens, CI harness, ASCII formatters,

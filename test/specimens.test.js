@@ -16,6 +16,7 @@ import {
   createObserverOrphanSpecimen,
   createDetachedDomSpecimen,
   createAsyncRetentionSpecimen,
+  createRafOrphanSpecimen,
 } from '../scenarios/Scenarios.js';
 
 const HAS_GC = typeof globalThis.gc === 'function';
@@ -202,6 +203,30 @@ describe('async-retention specimen', () => {
 });
 
 // -----------------------------------------------------------------
+// Specimen: raf-orphan
+// -----------------------------------------------------------------
+
+describe('raf-orphan specimen', () => {
+  it('fires warning + finding for an ownerless rAF loop', async () => {
+    const specimen = createRafOrphanSpecimen();
+    const result = await verify(specimen);
+    assert.equal(result.pass, true, formatFailure(result));
+    // Warning channel: one no-owner-set at schedule time (not per frame).
+    assert.equal(result.warnings.actual.length, 1);
+    assert.equal(result.warnings.actual[0].kind, 'raf-orphan');
+    assert.equal(result.warnings.actual[0].reason, 'no-owner-set');
+    // Finding channel: the armed, ownerless loop surfaced at audit time.
+    assert.equal(result.findings.actual.length, 1);
+    assert.equal(result.findings.actual[0].kind, 'raf-orphan');
+    assert.equal(result.findings.actual[0].reason, 'no-owner-loop-armed');
+    // No FR settlement for this pre-FR specimen.
+    assert.equal(result.leaks.actual.length, 0);
+    assert.equal(result.settleResult, null);
+  });
+});
+
+
+// -----------------------------------------------------------------
 // composeScenario
 // -----------------------------------------------------------------
 
@@ -213,13 +238,14 @@ describe('composeScenario', () => {
       createObserverOrphanSpecimen(),
       createDetachedDomSpecimen(),
       createAsyncRetentionSpecimen(),
+      createRafOrphanSpecimen(),
     ]);
     assert.equal(result.pass, true, formatCompose(result));
-    assert.equal(result.passed, 5);
+    assert.equal(result.passed, 6);
     assert.equal(result.failed, 0);
   });
 
-  it('runs all 6 specimens including raw-fr', { skip: !HAS_GC && 'requires --expose-gc' }, async () => {
+  it('runs all 7 specimens including raw-fr', { skip: !HAS_GC && 'requires --expose-gc' }, async () => {
     const result = await composeScenario([
       createRawFrSpecimen(),
       createTimerOrphanSpecimen(),
@@ -227,9 +253,10 @@ describe('composeScenario', () => {
       createObserverOrphanSpecimen(),
       createDetachedDomSpecimen(),
       createAsyncRetentionSpecimen(),
+      createRafOrphanSpecimen(),
     ]);
     assert.equal(result.pass, true, formatCompose(result));
-    assert.equal(result.passed, 6);
+    assert.equal(result.passed, 7);
     assert.equal(result.failed, 0);
   });
 });

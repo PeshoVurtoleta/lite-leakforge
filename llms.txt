@@ -7,10 +7,12 @@
 lite-leakforge is the product layer above lite-leak's leak tracker.
 It provides three capabilities:
 
-1. SPECIMENS: Deterministic leak scenarios that trigger each of
-   lite-leak's six kernels. Each specimen declares expected events
-   across three detection channels (FR leak reports, warnings,
-   findings). The verify() contract diffs expected vs actual.
+1. SPECIMENS: Deterministic leak scenarios that trigger lite-leak's
+   kernels (seven specimens: the raw FR path plus one per patchable
+   kernel). Each specimen declares expected events across three
+   detection channels (FR leak reports, warnings, findings). The
+   verify() contract diffs expected vs actual. Each specimen is the
+   kernel's acceptance test and ships in the same session as the kernel.
 
 2. CI HARNESS: assertNoLeaks(fn) and leakSuite() for node:test.
    Exit codes: 0=clean, 1=confirmed leak, 3=inconclusive.
@@ -20,7 +22,14 @@ It provides three capabilities:
    with bounded retry. Kernel teardown is exception-safe (try/finally
    around user code).
 
-3. FORMATTERS + DASHBOARD: ASCII formatters for leak reports,
+3. CLI (npx leakforge): run a leak-suite file's checks under one
+   gate and exit 0/1/3 (evidence-wins). Suite file default-exports
+   { name, checks:[{ name, run(tracker) }], options? }. --specimens
+   verifies the built-in specimens (kernel acceptance). --json writes
+   a machine-readable CI artifact. Self-relaunches with --expose-gc.
+   Completes the CLI trilogy with litecap and gc-profiler.
+
+4. FORMATTERS + DASHBOARD: ASCII formatters for leak reports,
    findings, warnings, and owner paths. Dashboard data model with
    ghost-safe signal design (exactly 2 signals, zero per-event churn)
    and LAZY entry formatting (text/ownerPath/label are memoized
@@ -35,16 +44,17 @@ import { assertNoLeaks, leakSuite, createLeakGate } from '@zakkster/lite-leakfor
 import { verify, composeScenario, createTimerOrphanSpecimen } from '@zakkster/lite-leakforge/scenarios';
 import { formatReport, formatOwnerPath, summarize } from '@zakkster/lite-leakforge/formatters';
 import { createDashboardModel } from '@zakkster/lite-leakforge/panels';
+// CLI: npx leakforge <suite-file> [--json out.json] | --specimens [name...]
 ```
 
 ## Specimen names
 
 raw-fr, timer-orphan, listener-orphan, observer-orphan,
-detached-dom, async-retention.
+detached-dom, async-retention, raf-orphan.
 
 ## Dependencies
 
-- @zakkster/lite-leak ^1.0.0 (runtime)
+- @zakkster/lite-leak ^1.1.0 (runtime; raf-orphan kernel)
 - @zakkster/lite-signal >=1.5.0-beta.3 <2.0.0 (peer)
 
 ## Conventions

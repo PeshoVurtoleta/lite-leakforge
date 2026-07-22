@@ -162,6 +162,14 @@ export declare function createListenerOrphanSpecimen(): Specimen;
 export declare function createObserverOrphanSpecimen(): Specimen;
 export declare function createDetachedDomSpecimen(): Specimen;
 export declare function createAsyncRetentionSpecimen(): Specimen;
+/**
+ * Specimen for lite-leak's raf-orphan kernel (1.1.0): a requestAnimationFrame
+ * loop scheduled with no owner. Emits a `no-owner-set` warning at schedule
+ * time and a `no-owner-loop-armed` finding at audit time. Pre-FR channels only
+ * (needsSettle false); uses a specimen-local rAF host, so it needs no DOM and
+ * patches no global. Requires @zakkster/lite-leak >= 1.1.0.
+ */
+export declare function createRafOrphanSpecimen(): Specimen;
 
 // -----------------------------------------------------------------
 // Panels

@@ -6,6 +6,7 @@ export {
   createRawFrSpecimen, createTimerOrphanSpecimen,
   createListenerOrphanSpecimen, createObserverOrphanSpecimen,
   createDetachedDomSpecimen, createAsyncRetentionSpecimen,
+  createRafOrphanSpecimen,
 } from '../Leakforge.js';
 export type {
   Specimen, ExpectedEvent, ChannelResult, VerifyResult,

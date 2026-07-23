@@ -31,6 +31,13 @@ export function formatOwnerPath(path, brokenAt) {
   const parts = [];
   for (let i = 0; i < path.length; i++) {
     const frame = path[i];
+    // Frames come from kernel-supplied owner paths and may be null, a
+    // primitive, or otherwise malformed; a formatter must render them, not
+    // throw on them.
+    if (frame === null || typeof frame !== 'object') {
+      parts.push('[? ?]');
+      continue;
+    }
     const id = frame.id !== undefined ? frame.id : '?';
     const kind = frame.kind || '?';
     let label = '[' + id + ' ' + kind + ']';
@@ -52,8 +59,12 @@ export function formatReport(report) {
   if (report === null || report === undefined) return '(null report)';
   const lines = [];
   lines.push('LEAK: kind=' + (report.kind || 'unknown'));
-  if (report.tag !== null && report.tag !== undefined) {
-    lines.push('  tag: ' + formatTag(report.tag));
+  // A tag is an arbitrary user value and may be exposed through a throwing
+  // getter. Reading it must not take the whole report formatter down.
+  let tag;
+  try { tag = report.tag; } catch (_e) { tag = '(unreadable tag)'; }
+  if (tag !== null && tag !== undefined) {
+    lines.push('  tag: ' + formatTag(tag));
   }
   if (report.ownerPath !== null && report.ownerPath !== undefined) {
     lines.push('  owner: ' + formatOwnerPath(report.ownerPath, report.brokenAt));
@@ -158,6 +169,9 @@ export function summarize(events) {
   const groups = new Map();
   for (let i = 0; i < events.length; i++) {
     const e = events[i];
+    // Events are kernel output; a formatter over them must tolerate a null,
+    // undefined, or primitive member rather than throwing on property access.
+    if (e === null || typeof e !== 'object') continue;
     const kind = e.kind || 'unknown';
     const reason = e.reason || null;
     const key = kind + '\x00' + (reason || '');

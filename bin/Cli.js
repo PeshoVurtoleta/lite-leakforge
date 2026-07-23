@@ -52,6 +52,13 @@ export { EXIT_CLEAN, EXIT_LEAK, EXIT_INCONCLUSIVE };
 // Usage exit code, distinct from the gate's 0/1/3 leak vocabulary.
 export const EXIT_USAGE = 2;
 
+// A runtime failure (a check that throws or rejects, a suite that fails to
+// import, an unwritable --json path) produces no trustworthy verdict, so it
+// maps to INCONCLUSIVE -- "recapture", exactly what an errored check yields.
+// A fourth code would break every consumer's exit-code table; evidence still
+// wins, so a real leak anywhere outranks an errored check.
+export const EXIT_ERROR = EXIT_INCONCLUSIVE;
+
 export const USAGE =
   'leakforge -- CI leak gate for @zakkster/lite-leak\n' +
   '\n' +
@@ -143,7 +150,12 @@ export function parseArgs(argv) {
         if (out.error === null) out.error = '--json requires a path';
       } else { out.json = next; i++; }
     } else if (a.startsWith('--json=')) {
-      out.json = a.slice('--json='.length);
+      const path = a.slice('--json='.length);
+      if (path.length === 0) {
+        if (out.error === null) out.error = '--json= requires a non-empty path';
+      } else {
+        out.json = path;
+      }
     } else if (a.startsWith('-')) {
       if (out.error === null) out.error = 'unknown option: ' + a;
     } else {
@@ -198,12 +210,34 @@ export async function runSuite(suite, options) {
   const evidence = [];
   let anyLeak = false;
   let anyInconclusive = false;
+  let anyError = false;
 
   for (let i = 0; i < checks.length; i++) {
     const c = checks[i];
     const fn = typeof c === 'function' ? c : c.run;
     const name = (c && c.name) || ('check ' + (i + 1));
-    const r = await gate.run(fn);
+    let r;
+    try {
+      r = await gate.run(fn);
+    } catch (err) {
+      // One check that throws or rejects must not discard the verdicts of every
+      // check around it, and must not surface as a usage error or an
+      // unhandled-rejection crash that CI reads as a leak. Record it as an
+      // errored check and carry on.
+      anyError = true;
+      results.push({
+        name: name,
+        exitCode: EXIT_ERROR,
+        clean: false,
+        errored: true,
+        error: String(err && err.message ? err.message : err),
+        leaks: [],
+        warnings: [],
+        findings: [],
+        settle: null,
+      });
+      continue;
+    }
     results.push({
       name: name,
       exitCode: r.exitCode,
@@ -219,9 +253,10 @@ export async function runSuite(suite, options) {
     for (let j = 0; j < r.findings.length; j++) evidence.push(r.findings[j]);
   }
 
+  // Evidence wins: a real leak outranks both errored and unsettled checks.
   const exitCode = anyLeak
     ? EXIT_LEAK
-    : (anyInconclusive ? EXIT_INCONCLUSIVE : EXIT_CLEAN);
+    : ((anyInconclusive || anyError) ? EXIT_INCONCLUSIVE : EXIT_CLEAN);
   return {
     suite: suite.name || 'suite',
     checks: results,
@@ -329,11 +364,13 @@ export function renderSuiteReport(report, options) {
   lines.push('=== leakforge: ' + report.suite + ' ===');
   for (let i = 0; i < report.checks.length; i++) {
     const c = report.checks[i];
-    let line = '[' + label(c.exitCode) + '] ' + c.name;
+    let line = '[' + (c.errored === true ? 'ERROR' : label(c.exitCode)) + '] ' + c.name;
     const bits = [];
+    if (c.errored === true && c.error) bits.push(c.error);
     if (c.leaks.length > 0) bits.push(count(c.leaks.length, 'leak'));
     if (c.findings.length > 0) bits.push(count(c.findings.length, 'finding'));
-    if (c.exitCode === EXIT_INCONCLUSIVE && c.settle !== null && c.settle !== undefined) {
+    if (c.exitCode === EXIT_INCONCLUSIVE && c.errored !== true &&
+        c.settle !== null && c.settle !== undefined) {
       bits.push('FR unsettled, ' + c.settle.remaining + ' remaining');
     }
     if (bits.length > 0) line = line + '  -- ' + bits.join(', ');

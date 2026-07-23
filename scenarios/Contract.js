@@ -48,6 +48,10 @@ import {
 } from '@zakkster/lite-leak';
 import { settleFinalizers } from '../harness/Settle.js';
 
+// A tag nested deeper than this is a data structure, not a label. Bail out
+// rather than recursing -- the diff is a test oracle, not a serializer.
+const MAX_TAG_DEPTH = 100;
+
 // -----------------------------------------------------------------
 // Diffing helpers
 // -----------------------------------------------------------------
@@ -58,17 +62,43 @@ import { settleFinalizers } from '../harness/Settle.js';
  * @returns {boolean}
  * @private
  */
-function deepEqual(a, b) {
-  if (a === b) return true;
+function deepEqual(a, b, seen, depth) {
+  // Object.is, not ===, so NaN matches itself and +0/-0 stay distinct.
+  if (Object.is(a, b)) return true;
   if (a === null || b === null) return false;
   if (typeof a !== typeof b) return false;
   if (typeof a !== 'object') return false;
+
+  // Arrays and plain objects are different shapes. Without this, ['a','b']
+  // compares equal to { 0: 'a', 1: 'b' } because Object.keys agrees.
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+
+  // Boxed builtins (Date, Map, Set, RegExp, TypedArray, ...) expose no own
+  // enumerable keys, so a purely key-based walk declares ANY two instances of
+  // the same class equal -- two different Dates, two different Maps. Tags are
+  // arbitrary user values, so compare their class first and fall back to
+  // identity for anything that is not a plain object or array.
+  const ta = Object.prototype.toString.call(a);
+  if (ta !== Object.prototype.toString.call(b)) return false;
+  if (ta !== '[object Object]' && ta !== '[object Array]') return false;
+
+  // Cycle + depth guard. A tag holding a back-reference (a component instance,
+  // a DOM-ish node) would otherwise recurse until the stack dies, taking
+  // verify() with it.
+  const d = depth === undefined ? 0 : depth;
+  if (d > MAX_TAG_DEPTH) return false;
+  const s = seen === undefined ? new Map() : seen;
+  const priorB = s.get(a);
+  if (priorB !== undefined) return priorB === b;
+  s.set(a, b);
+
   const aKeys = Object.keys(a);
   const bKeys = Object.keys(b);
   if (aKeys.length !== bKeys.length) return false;
   for (let i = 0; i < aKeys.length; i++) {
     const k = aKeys[i];
-    if (!deepEqual(a[k], b[k])) return false;
+    if (!Object.prototype.hasOwnProperty.call(b, k)) return false;
+    if (!deepEqual(a[k], b[k], s, d + 1)) return false;
   }
   return true;
 }
@@ -123,6 +153,30 @@ function channelResult(expected, actual) {
 // -----------------------------------------------------------------
 
 /**
+ * Validate a specimen before touching it, so a malformed one produces a message
+ * naming the problem instead of a bare property-access TypeError from somewhere
+ * inside the run (e.g. `verify(null)` reading `.name`).
+ * @private
+ */
+function assertSpecimen(specimen) {
+  if (specimen === null || typeof specimen !== 'object') {
+    throw new TypeError(
+      'verify: specimen must be an object, got ' +
+      (specimen === null ? 'null' : typeof specimen)
+    );
+  }
+  if (typeof specimen.name !== 'string' || specimen.name.length === 0) {
+    throw new TypeError('verify: specimen.name must be a non-empty string');
+  }
+  if (typeof specimen.inject !== 'function') {
+    throw new TypeError('verify: specimen "' + specimen.name + '" must define inject(tracker)');
+  }
+  if (typeof specimen.release !== 'function') {
+    throw new TypeError('verify: specimen "' + specimen.name + '" must define release()');
+  }
+}
+
+/**
  * Run a single specimen against a fresh tracker, settle FR if needed,
  * run audit(), and diff all three channels.
  *
@@ -133,6 +187,7 @@ function channelResult(expected, actual) {
  * @returns {Promise<VerifyResult>}
  */
 export async function verify(specimen, options) {
+  assertSpecimen(specimen);
   const opts = options || {};
   const leakReports = [];
   const warningEvents = [];
@@ -233,8 +288,25 @@ export async function composeScenario(specimens, options) {
   const results = [];
   let passed = 0;
   let failed = 0;
+  let errored = 0;
   for (let i = 0; i < specimens.length; i++) {
-    const r = await verify(specimens[i], options);
+    const spec = specimens[i];
+    // One malformed or throwing specimen must not discard the verdicts of every
+    // specimen around it. Same policy the CLI already applies in runSpecimens();
+    // the public API had the stricter, less useful behaviour.
+    let r;
+    try {
+      r = await verify(spec, options);
+    } catch (e) {
+      errored++;
+      failed++;
+      results.push({
+        specimen: (spec && spec.name) || 'specimen ' + (i + 1),
+        pass: false,
+        error: String(e && e.message ? e.message : e),
+      });
+      continue;
+    }
     results.push(r);
     if (r.pass) passed++;
     else failed++;
@@ -244,5 +316,6 @@ export async function composeScenario(specimens, options) {
     results: results,
     passed: passed,
     failed: failed,
+    errored: errored,
   };
 }

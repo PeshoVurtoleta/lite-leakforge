@@ -28,6 +28,7 @@ import {
   specimenReportToJson,
   USAGE,
   EXIT_USAGE,
+  EXIT_ERROR,
 } from './Cli.js';
 
 // --help/--version never run the gate, so don't pay for a subprocess.
@@ -52,6 +53,25 @@ if (!wantsInfoOnly && typeof globalThis.gc !== 'function' && process.env.LEAKFOR
   process.exit(child.status === null ? EXIT_USAGE : child.status);
 }
 
+/**
+ * Write a --json artifact, reporting a write failure loudly instead of letting
+ * it crash into the top-level catch as a usage error after the report already
+ * printed CLEAN. Returns true on success, false on failure.
+ * @private
+ */
+function writeArtifact(path, json) {
+  try {
+    writeFileSync(path, JSON.stringify(json, null, 2) + '\n');
+    return true;
+  } catch (err) {
+    process.stderr.write(
+      'leakforge: could not write --json artifact to "' + path + '": ' +
+      (err && err.message ? err.message : String(err)) + '\n'
+    );
+    return false;
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
@@ -67,7 +87,8 @@ async function main() {
     const report = await runSpecimens(specimens);
     process.stdout.write(renderSpecimenReport(report) + '\n');
     if (args.json !== null) {
-      writeFileSync(args.json, JSON.stringify(specimenReportToJson(report, VERSION), null, 2) + '\n');
+      const ok = writeArtifact(args.json, specimenReportToJson(report, VERSION));
+      if (!ok) return EXIT_ERROR;
     }
     return report.exitCode;
   }
@@ -80,7 +101,8 @@ async function main() {
   const report = await runSuite(suite);
   process.stdout.write(renderSuiteReport(report, { group: args.group }) + '\n');
   if (args.json !== null) {
-    writeFileSync(args.json, JSON.stringify(suiteReportToJson(report, VERSION), null, 2) + '\n');
+    const ok = writeArtifact(args.json, suiteReportToJson(report, VERSION));
+    if (!ok) return EXIT_ERROR;
   }
   return report.exitCode;
 }
@@ -88,6 +110,10 @@ async function main() {
 main()
   .then(function (code) { process.exit(code); })
   .catch(function (err) {
+    // A crash here is a runtime failure -- a suite that failed to import, a
+    // loader error -- not a malformed command line (that is caught in
+    // parseArgs and returns EXIT_USAGE). No trustworthy verdict was produced,
+    // so it is inconclusive/recapture, not usage.
     process.stderr.write('leakforge: ' + (err && err.message ? err.message : String(err)) + '\n');
-    process.exit(EXIT_USAGE);
+    process.exit(EXIT_ERROR);
   });

@@ -2,6 +2,101 @@
 
 All notable changes to `@zakkster/lite-leakforge` are documented here.
 
+## 1.4.1 (2026-07-21)
+
+**Logic hardening.** A pass of adversarial review found that the gate reported
+clean async code as a leak, that global patch state could be corrupted
+permanently, that the tag matcher produced silent false-passes, and that
+runtime failures collapsed the exit-code vocabulary. All are fixed and pinned by
+a new 106-test torture suite (`npm run torture`).
+
+No API changed shape; this is a patch. Every fix converts a silent wrong answer
+into either a correct one or a named error.
+
+### Fixed -- the gate reported clean async code as a leak (worst)
+
+`createLeakGate().run()` called the check function without awaiting it, then
+audited while the check's own `await` timer was still pending. A check whose
+body is `await new Promise(r => setTimeout(r, 50))` -- the single most common
+async-test shape -- was reported as a confirmed `timer-orphan` leak, exit 1. Now
+awaited: the false leak becomes exit 0, and a leak created *after* a check's
+first await is no longer invisible to timing luck.
+
+### Fixed -- permanent global patch corruption (two paths)
+
+Kernels patch process globals, and lite-leak's `_restoreIfOurs` correctly
+refuses to restore a slot it no longer owns, so any interleaving of two runs'
+install/uninstall stranded a dead wrapper on the global forever.
+
+- **Overlapping `gate.run()` calls** left every `setTimeout` in the process
+  routed through a dead kernel holding a dead tracker, silently. `run()` now
+  serialises process-wide through a module-level promise chain -- free, since
+  the settle loop is `gc()`-bound and was never parallelisable.
+- **A throwing kernel registration** left everything registered before it
+  patched, so the next clean check failed CI with phantom findings from a
+  tracker that no longer existed. Registration now unwinds on failure.
+
+### Fixed -- the tag matcher (`deepEqual`) produced silent false-passes
+
+Tags are arbitrary user values and the matcher is the test oracle. It declared
+**any two Dates, Maps, Sets, RegExps or TypedArrays equal** (`Object.keys` on a
+boxed builtin is `[]`), matched `['a','b']` against `{0:'a',1:'b'}`, never
+matched `NaN` to itself, and stack-overflowed on a cyclic tag. Now: `Object.is`
+for NaN, an `Object.prototype.toString` class gate with identity fallback,
+`Array.isArray` symmetry, an own-property check, and a seen-map plus
+`MAX_TAG_DEPTH` cycle guard.
+
+### Fixed -- hostile-input crashes
+
+`settleFinalizers` now clamps `pressureKB`/`maxRounds` through a `safeCount`
+helper (capped at 256 MB / 1000 rounds), so `-1`, `2**31` and fractional values
+no longer RangeError and `maxRounds: NaN` no longer silently runs zero rounds; a
+`check()` returning a non-number is rejected rather than compared as a string.
+`createDashboardModel` clamps `logCapacity` (fractional no longer RangeErrors,
+`5e8` no longer OOMs the process). `verify(null)` and malformed specimens now
+throw a message naming the missing hook.
+
+### Fixed -- exit-code vocabulary under failure
+
+The tool advertises `0 clean / 1 leak / 3 inconclusive / 2 usage`, but every
+runtime failure funnelled into `2` or an accidental `1`:
+
+- A check that **throws** discarded the verdicts of every check around it and
+  exited `2`. Now isolated per-check, rendered as an `[ERROR]` row, run
+  continues, exit `3`.
+- An **unwritable `--json` path** printed CLEAN then exited `2`. Now a loud
+  stderr message and exit `3`.
+- A **suite that fails to import** exited `2`. Now `3`.
+- **`--json=`** (empty value) reached `writeFileSync`; now a usage error (`2`).
+
+`EXIT_ERROR` is defined as `EXIT_INCONCLUSIVE` (3) deliberately: an errored check
+produced no trustworthy verdict, which is what inconclusive already means, and a
+fourth code would break consumer exit-code tables. Evidence still wins -- a real
+leak anywhere outranks an errored or unsettled check.
+
+### Fixed -- dashboard
+
+- `dispose()` never cancelled its pending animation frame; it flipped a flag and
+  let the frame no-op. In a package that ships a raf-orphan specimen for exactly
+  this shape, that was embarrassing. Now cancelled (typeof-guarded, because the
+  DOM tests stub `requestAnimationFrame` without its counterpart).
+- Selection was held by index into the *filtered* entries array, so every new
+  event slid the window and desynced the highlight from the inspector. Now held
+  by entry identity.
+
+### Fixed -- formatters tolerate hostile events
+
+`summarize`, `formatReport` and `formatOwnerPath` no longer throw on a null or
+primitive member, a throwing-getter tag, or a malformed owner frame -- a
+formatter over kernel output must render bad input, not crash on it.
+
+### Added
+
+- **`torture/`** -- 106 adversarial regression tests across gate, contract,
+  settle, formatters/model, CLI end-to-end, and soak (300 sequential gate runs,
+  100k dashboard events). Run with `npm run torture`. Not shipped in the package
+  (`files[]` excludes it, like `test/`).
+
 ## 1.4.0 (2026-07-21)
 
 **Clustered reporting.** `--group` collapses findings into clusters and names

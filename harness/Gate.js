@@ -30,6 +30,17 @@ const EXIT_CLEAN = 0;
 const EXIT_LEAK = 1;
 const EXIT_INCONCLUSIVE = 3;
 
+// Kernels patch process-global surfaces (setTimeout, EventTarget.prototype,
+// AbortController). lite-leak's _restoreIfOurs correctly refuses to restore a
+// slot it no longer owns, so ANY interleaving of two gate runs' install/
+// uninstall strands a dead wrapper on the global forever -- every setTimeout in
+// the process then routes through a dead kernel holding a dead tracker, and
+// neither run rejects. The per-tracker patch guard cannot see across trackers,
+// so mutual exclusion has to live here. A module-level promise chain serialises
+// run() process-wide; it costs nothing because the settle loop is gc()-bound
+// and was never parallelisable.
+let runChain = Promise.resolve();
+
 export { EXIT_CLEAN, EXIT_LEAK, EXIT_INCONCLUSIVE };
 
 /**
@@ -77,7 +88,7 @@ export function createLeakGate(options) {
    * @property {object[]} findings
    * @property {object} settleResult
    */
-  async function run(fn) {
+  async function runOnce(fn) {
     if (typeof globalThis.gc !== 'function') {
       throw new Error('leakGate requires --expose-gc');
     }
@@ -98,20 +109,30 @@ export function createLeakGate(options) {
     // inside the kernel, so a gate that forwarded it only to the tracker
     // produced findings with origin:null however it was configured -- and
     // clustering by call site silently degraded to clustering by reason.
+    // Registration sits in its own try/catch: one bad entry in extraKernels
+    // throws part-way through, and every kernel registered before it would
+    // otherwise stay patched on the process globals, so the next clean check
+    // fails CI with phantom findings from a tracker that no longer exists.
+    // Unwind whatever was collected before rethrowing.
     const offs = [];
-    if (opts.installTimerKernel !== false) {
-      offs.push(tracker.registerKernel(createTimerOrphanKernel({ warnOnNoOwner: false, captureStacks: captureStacks })));
-    }
-    if (opts.installListenerKernel !== false) {
-      offs.push(tracker.registerKernel(createListenerOrphanKernel({ warnOnNoOwner: false, captureStacks: captureStacks })));
-    }
-    if (opts.installAsyncKernel !== false) {
-      offs.push(tracker.registerKernel(createAsyncRetentionKernel({ warnOnNoOwner: false })));
-    }
-    if (Array.isArray(opts.extraKernels)) {
-      for (let i = 0; i < opts.extraKernels.length; i++) {
-        offs.push(tracker.registerKernel(opts.extraKernels[i]));
+    try {
+      if (opts.installTimerKernel !== false) {
+        offs.push(tracker.registerKernel(createTimerOrphanKernel({ warnOnNoOwner: false, captureStacks: captureStacks })));
       }
+      if (opts.installListenerKernel !== false) {
+        offs.push(tracker.registerKernel(createListenerOrphanKernel({ warnOnNoOwner: false, captureStacks: captureStacks })));
+      }
+      if (opts.installAsyncKernel !== false) {
+        offs.push(tracker.registerKernel(createAsyncRetentionKernel({ warnOnNoOwner: false })));
+      }
+      if (Array.isArray(opts.extraKernels)) {
+        for (let i = 0; i < opts.extraKernels.length; i++) {
+          offs.push(tracker.registerKernel(opts.extraKernels[i]));
+        }
+      }
+    } catch (err) {
+      for (let i = 0; i < offs.length; i++) offs[i]();
+      throw err;
     }
 
     // Run the user's code, audit, and settle under try/finally.
@@ -120,7 +141,12 @@ export function createLeakGate(options) {
     // patches leak into every subsequent test in the process.
     let settleResult;
     try {
-      fn(tracker);
+      // MUST be awaited. Without it the audit below runs while the check's own
+      // `await` timer is still pending -- the timer-orphan kernel then reports
+      // a clean async check as a confirmed leak -- and any leak the check
+      // creates after its first await is invisible, caught only if the settle
+      // loop's GC pressure happens to outlast the awaited work.
+      await fn(tracker);
 
       // Run audit before settle (same ordering as verify contract).
       tracker.audit();
@@ -159,6 +185,15 @@ export function createLeakGate(options) {
       findings: findings,
       settleResult: settleResult,
     };
+  }
+
+  // Public run() serialises against every other gate's run() in the process.
+  // The chain never rejects: a failed run settles the chain so the next one
+  // still starts.
+  function run(fn) {
+    const result = runChain.then(function () { return runOnce(fn); });
+    runChain = result.then(function () {}, function () {});
+    return result;
   }
 
   return {

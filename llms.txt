@@ -66,3 +66,23 @@ detached-dom, async-retention, raf-orphan.
 - verify() THROWS for needsSettle specimens without --expose-gc
   (env error, not a detection FAIL); pre-FR specimens run anywhere
 - Subpath exports ship their own .d.ts files
+
+HARDENING (1.4.1)
+-----------------
+- gate.run() AWAITS the check fn; a clean `await setTimeout` check no longer
+  reports as a timer-orphan leak. run() also serialises process-wide (module
+  promise chain) so overlapping runs cannot strand a dead wrapper on a global;
+  kernel registration unwinds on failure.
+- Contract deepEqual: Object.is (NaN), class gate via Object.prototype.toString
+  (Date/Map/Set/RegExp/TypedArray compare by identity, not empty key-walk),
+  Array.isArray symmetry, own-property check, seen-map + MAX_TAG_DEPTH cycle
+  guard. Fixes silent tag false-PASS.
+- settleFinalizers clamps pressureKB/maxRounds (safeCount, 256MB/1000 caps) and
+  rejects a non-number check() return. createDashboardModel clamps logCapacity.
+  verify(null)/malformed specimen throws a named error.
+- Exit codes: EXIT_ERROR = 3 (inconclusive). A throwing check is isolated as an
+  [ERROR] row (run continues); unwritable --json and import failure -> 3; empty
+  --json= -> usage (2). Evidence wins.
+- Dashboard dispose() cancels its raf; selection held by entry identity not
+  filtered index. Formatters tolerate null/primitive/hostile-getter events.
+- torture/ suite: 106 tests, `npm run torture`.

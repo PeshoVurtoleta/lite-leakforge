@@ -165,7 +165,12 @@ export function createDashboard(options) {
   // -----------------------------------------------------------------
 
   let windowStart = 0;      // entry index of rowPool[0] in current window
-  let selectedEntryIdx = -1;
+  // Selection is held by entry IDENTITY, not by index. The window slides on
+  // every new event, so an index into the filtered array silently points at a
+  // different entry after the next event -- the highlight moves and the
+  // inspector desyncs from the highlighted row. The object reference stays
+  // correct until the entry falls out of the ring.
+  let selectedEntry = null;
   let frameCount = 0;
   let disposed = false;
   let logDirty = true;      // initial render on first gated frame
@@ -177,23 +182,24 @@ export function createDashboard(options) {
   function selectRow(entryIdx) {
     const entries = model.getEntries();
     if (entryIdx >= 0 && entryIdx < entries.length) {
-      selectedEntryIdx = entryIdx;
-      const inspection = model.inspectOwnerPath(entries[entryIdx]);
+      selectedEntry = entries[entryIdx];
+      const inspection = model.inspectOwnerPath(selectedEntry);
       inspectorEl.textContent =
         'kind: ' + (inspection.kind || '?') +
         '\ndepth: ' + inspection.depth +
         '\npath: ' + inspection.formatted;
     } else {
-      selectedEntryIdx = -1;
+      selectedEntry = null;
       inspectorEl.textContent = '(click a log row to inspect)';
     }
-    applySelection(entries.length);
+    applySelection(entries);
   }
 
-  function applySelection(entryCount) {
+  function applySelection(entries) {
     for (let i = 0; i < maxLogRows; i++) {
       const entryIdx = windowStart + i;
-      if (entryIdx === selectedEntryIdx && entryIdx < entryCount) {
+      if (selectedEntry !== null && entryIdx < entries.length &&
+          entries[entryIdx] === selectedEntry) {
         rowPool[i].classList.add('selected');
       } else {
         rowPool[i].classList.remove('selected');
@@ -219,7 +225,7 @@ export function createDashboard(options) {
         row.textContent = '';
       }
     }
-    applySelection(entries.length);
+    applySelection(entries);
     logEl.scrollTop = logEl.scrollHeight;
   }
 
@@ -248,6 +254,7 @@ export function createDashboard(options) {
 
   // Throttled render loop. Model changes only flip logDirty (one
   // boolean write per event); the gated frame does the real work.
+  let rafId = 0;
   function tick() {
     if (disposed) return;
     frameCount++;
@@ -256,7 +263,7 @@ export function createDashboard(options) {
       renderLog();
       renderCounters();
     }
-    requestAnimationFrame(tick);
+    rafId = requestAnimationFrame(tick);
   }
 
   // Effect: mark dirty when logVersion or filterKind changes.
@@ -268,7 +275,7 @@ export function createDashboard(options) {
     logDirty = true;
   });
 
-  requestAnimationFrame(tick);
+  rafId = requestAnimationFrame(tick);
 
   // -----------------------------------------------------------------
   // Public API
@@ -292,6 +299,14 @@ export function createDashboard(options) {
       if (disposed) return;
       disposed = true;
       disposeLogEffect();
+      // Cancel the pending frame instead of relying on the disposed flag to
+      // no-op it. This package ships a raf-orphan specimen describing exactly
+      // this shape; the dashboard should not exhibit it. Guarded by typeof
+      // because the DOM tests stub requestAnimationFrame without its counterpart.
+      if (typeof cancelAnimationFrame === 'function' && rafId !== 0) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
       if (root.parentNode !== null) root.parentNode.removeChild(root);
     },
 

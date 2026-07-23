@@ -46,11 +46,25 @@ export { CHANNEL_LEAK, CHANNEL_WARNING, CHANNEL_FINDING, CHANNEL_ERROR };
  *   Max entries in the ring buffer. Power of 2 recommended.
  * @returns {DashboardModel}
  */
+/**
+ * Coerce a caller-supplied ring capacity to a safe positive integer, bounded so
+ * a fractional value cannot RangeError and a huge one cannot OOM.
+ * @private
+ */
+function normalizeCapacity(value, dflt, max) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return dflt;
+  const n = Math.floor(value);
+  if (n < 1) return dflt;
+  return n > max ? max : n;
+}
+
 export function createDashboardModel(options) {
   const opts = options || {};
-  const capacity = typeof opts.logCapacity === 'number' && opts.logCapacity > 0
-    ? opts.logCapacity
-    : 256;
+  // A fractional capacity reaches `new Array(2.5)` (RangeError); Infinity or a
+  // huge value (5e8) aborts the process with OOM. Floor, bound, and fall back
+  // to the default for anything non-finite. 2^20 entries is far past any real
+  // dashboard need.
+  const capacity = normalizeCapacity(opts.logCapacity, 256, 1048576);
 
   // -----------------------------------------------------------------
   // Ring buffer for event log (pre-allocated)

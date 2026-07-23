@@ -274,12 +274,26 @@ Open `http://localhost:3000/demo/`. Six scenes:
 ## Tests
 
 ```
-node --expose-gc --test test/*.test.js
+node --expose-gc --test test/*.test.js   # 105 unit/integration
+npm run torture                          # 106 adversarial
 ```
 
-83 tests across 7 files: settle (7), gate (14), specimens (12),
-formatters (22), panels (21), dom (6), version (1). All GC-dependent
-tests skip gracefully without `--expose-gc`.
+The unit suite covers settle, gate, specimens, formatters, panels, dom and
+version; all GC-dependent tests skip gracefully without `--expose-gc`.
+
+The `torture/` suite is the adversarial regression net (not shipped in the
+package): overlapping gate runs and global-patch corruption, the tag-matcher
+false-pass classes, hostile settle/dashboard options, the CLI exit-code
+vocabulary end-to-end, and a soak of 300 sequential gate runs and 100k dashboard
+events.
+
+## Exit codes
+
+`0` clean, `1` leak, `2` usage error, `3` inconclusive. A runtime failure -- a
+check that throws or rejects, a suite that fails to import, an unwritable
+`--json` path -- maps to `3`: no trustworthy verdict was produced, so the honest
+result is "recapture". Evidence wins, so a real leak anywhere in the suite
+outranks both errored and unsettled checks.
 
 ## Architecture decisions
 

@@ -1,6 +1,6 @@
 {
   "name": "@zakkster/lite-leakforge",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Leak specimens, CI harness, and dashboard for @zakkster/lite-leak. Zero-GC diagnostic toolkit.",
   "type": "module",
   "main": "./Leakforge.js",
@@ -54,7 +54,8 @@
   "sideEffects": false,
   "scripts": {
     "test": "node --test test/*.test.js",
-    "test:gc": "node --expose-gc --test test/*.test.js"
+    "test:gc": "node --expose-gc --test test/*.test.js",
+    "torture": "node --expose-gc --test torture/*.torture.js"
   },
   "keywords": [
     "leak-detection",

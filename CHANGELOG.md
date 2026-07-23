@@ -2,6 +2,42 @@
 
 All notable changes to `@zakkster/lite-leakforge` are documented here.
 
+## 1.4.0 (2026-07-21)
+
+**Clustered reporting.** `--group` collapses findings into clusters and names
+the call site each one came from.
+
+### Added
+
+- **`--group`** -- pairs with lite-leak 1.5.0's `groupFindings`. Prints one line
+  per cluster with a count, plus the first non-instrumentation stack frame:
+
+  ```
+  Findings by cluster (2 of 190 findings):
+       150 x  timer-orphan / no-owner-pending
+             at run (app/panel.js:5:51)
+        40 x  timer-orphan / no-owner-pending
+             at run (app/chart.js:8:50)
+  ```
+
+  The existing `Summary` line already grouped by `kind`/`reason`, so clustering
+  by **call site** is the only thing this adds over it. That is also why
+  `--group` now implies `captureStacks` -- without a stack there is no call
+  site, and the flag would print what `Summary` already prints.
+
+### Fixed
+
+- **`captureStacks` never reached the kernels.** `createLeakGate({ captureStacks:
+  true })` forwarded the option to the tracker but constructed
+  `timer-orphan` and `listener-orphan` without it. `origin` is captured inside
+  the kernel at the moment a resource is created, so every gate finding carried
+  `origin: null` however the gate was configured -- silently disabling call-site
+  attribution, `--group` clustering, and any consumer reading `finding.origin`.
+
+### Changed
+
+- Requires `@zakkster/lite-leak` `^1.5.0`.
+
 ## 1.3.0 (2026-07-21)
 
 **GPU-resource specimen.** Acceptance coverage for lite-leak 1.3.0's

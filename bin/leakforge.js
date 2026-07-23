@@ -78,7 +78,7 @@ async function main() {
   }
   const suite = await loadSuite(args.suite);
   const report = await runSuite(suite);
-  process.stdout.write(renderSuiteReport(report) + '\n');
+  process.stdout.write(renderSuiteReport(report, { group: args.group }) + '\n');
   if (args.json !== null) {
     writeFileSync(args.json, JSON.stringify(suiteReportToJson(report, VERSION), null, 2) + '\n');
   }

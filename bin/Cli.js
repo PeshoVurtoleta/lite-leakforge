@@ -32,6 +32,7 @@ import {
 } from '../harness/Gate.js';
 import { verify } from '../scenarios/Contract.js';
 import { summarize, formatSummary, formatVerifyResult } from '../formatters/Format.js';
+import { groupFindings } from '@zakkster/lite-leak';
 import {
   createRawFrSpecimen,
   createTimerOrphanSpecimen,
@@ -64,6 +65,7 @@ export const USAGE =
   '\n' +
   'Options:\n' +
   '  --json <path>   Write a machine-readable JSON artifact for CI\n' +
+  '  --group         Collapse findings into clusters (count per kind/reason)\n' +
   '  --specimens     Verify the built-in specimens instead of a suite file\n' +
   '  -h, --help      Show this help\n' +
   '  -v, --version   Show version\n' +
@@ -126,7 +128,7 @@ export function builtinSpecimens(names) {
 export function parseArgs(argv) {
   const out = {
     mode: 'suite', suite: null, specimens: [], json: null,
-    help: false, version: false, error: null,
+    group: false, help: false, version: false, error: null,
   };
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
@@ -134,6 +136,7 @@ export function parseArgs(argv) {
     if (a === '--help' || a === '-h') out.help = true;
     else if (a === '--version' || a === '-v') out.version = true;
     else if (a === '--specimens') out.mode = 'specimens';
+    else if (a === '--group') out.group = true;
     else if (a === '--json') {
       const next = argv[i + 1];
       if (next === undefined || next.startsWith('-')) {
@@ -183,6 +186,12 @@ export async function runSuite(suite, options) {
     suite.options || {},
     options || {}
   );
+  // Clustering by call site is the only thing --group offers over the existing
+  // Summary line, and a call site needs a captured stack. Without this, --group
+  // would print exactly what Summary already prints.
+  if (options !== undefined && options !== null && options.group === true) {
+    gateOpts.captureStacks = true;
+  }
   const gate = createLeakGate(gateOpts);
   const checks = suite.checks;
   const results = [];
@@ -292,7 +301,30 @@ function count(n, noun) {
  * @param {object} report
  * @returns {string}
  */
-export function renderSuiteReport(report) {
+/**
+ * First stack frame that is not inside the instrumentation itself. The captured
+ * origin starts inside the kernel's patched wrapper, which is never the line the
+ * reader needs.
+ * @private
+ */
+function firstUserFrame(origin) {
+  const lines = origin.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i].trim();
+    if (l.indexOf('at ') !== 0) continue;
+    // Skip instrumentation frames by PATH, not by the substring 'lite-leak':
+    // a user's own suite file may well live under a directory of that name.
+    if (l.indexOf('node:') !== -1) continue;
+    if (l.indexOf('@zakkster/lite-leak') !== -1) continue;
+    if (l.indexOf('/kernels/') !== -1) continue;
+    if (l.indexOf('/harness/Gate.js') !== -1) continue;
+    if (l.indexOf('/Leak.js') !== -1) continue;
+    return l.slice(3);
+  }
+  return null;
+}
+
+export function renderSuiteReport(report, options) {
   const lines = [];
   lines.push('=== leakforge: ' + report.suite + ' ===');
   for (let i = 0; i < report.checks.length; i++) {
@@ -306,6 +338,27 @@ export function renderSuiteReport(report) {
     }
     if (bits.length > 0) line = line + '  -- ' + bits.join(', ');
     lines.push(line);
+  }
+  if (options !== undefined && options !== null && options.group === true) {
+    const all = [];
+    for (let i = 0; i < report.checks.length; i++) {
+      const f = report.checks[i].findings;
+      for (let j = 0; j < f.length; j++) all.push(f[j]);
+    }
+    const groups = groupFindings(all);
+    if (groups.length > 0) {
+      lines.push('');
+      lines.push('Findings by cluster (' + groups.length +
+        ' of ' + all.length + ' findings):');
+      for (let i = 0; i < groups.length; i++) {
+        const g = groups[i];
+        lines.push('  ' + String(g.count).padStart(6) + ' x  ' + g.kind + ' / ' + g.reason);
+        if (g.origin !== null) {
+          const site = firstUserFrame(g.origin);
+          if (site !== null) lines.push('           at ' + site);
+        }
+      }
+    }
   }
   lines.push('');
   lines.push('Summary:');

@@ -93,13 +93,17 @@ export function createLeakGate(options) {
       onFinding: function (f) { findings.push(f); },
     });
 
-    // Install default kernels.
+    // Install default kernels. captureStacks must reach the KERNELS, not only
+    // the tracker: `origin` is captured at the moment a resource is created,
+    // inside the kernel, so a gate that forwarded it only to the tracker
+    // produced findings with origin:null however it was configured -- and
+    // clustering by call site silently degraded to clustering by reason.
     const offs = [];
     if (opts.installTimerKernel !== false) {
-      offs.push(tracker.registerKernel(createTimerOrphanKernel({ warnOnNoOwner: false })));
+      offs.push(tracker.registerKernel(createTimerOrphanKernel({ warnOnNoOwner: false, captureStacks: captureStacks })));
     }
     if (opts.installListenerKernel !== false) {
-      offs.push(tracker.registerKernel(createListenerOrphanKernel({ warnOnNoOwner: false })));
+      offs.push(tracker.registerKernel(createListenerOrphanKernel({ warnOnNoOwner: false, captureStacks: captureStacks })));
     }
     if (opts.installAsyncKernel !== false) {
       offs.push(tracker.registerKernel(createAsyncRetentionKernel({ warnOnNoOwner: false })));

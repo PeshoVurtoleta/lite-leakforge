@@ -7,7 +7,7 @@
  * MIT License
  */
 
-export const VERSION = '1.4.1';
+export const VERSION = '1.5.0';
 
 // Harness
 export { settleFinalizers, settleTracker } from './harness/Settle.js';

@@ -73,6 +73,8 @@ export const USAGE =
   'Options:\n' +
   '  --json <path>   Write a machine-readable JSON artifact for CI\n' +
   '  --group         Collapse findings into clusters (count per kind/reason)\n' +
+  '  --baseline <p>  Fail only on findings new since baseline <p> (adoption gate)\n' +
+  '  --update-baseline  With --baseline, (re)write the baseline from this run\n' +
   '  --specimens     Verify the built-in specimens instead of a suite file\n' +
   '  -h, --help      Show this help\n' +
   '  -v, --version   Show version\n' +
@@ -135,7 +137,8 @@ export function builtinSpecimens(names) {
 export function parseArgs(argv) {
   const out = {
     mode: 'suite', suite: null, specimens: [], json: null,
-    group: false, help: false, version: false, error: null,
+    group: false, baseline: null, updateBaseline: false,
+    help: false, version: false, error: null,
   };
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
@@ -144,7 +147,18 @@ export function parseArgs(argv) {
     else if (a === '--version' || a === '-v') out.version = true;
     else if (a === '--specimens') out.mode = 'specimens';
     else if (a === '--group') out.group = true;
-    else if (a === '--json') {
+    else if (a === '--update-baseline') out.updateBaseline = true;
+    else if (a === '--baseline') {
+      const next = argv[i + 1];
+      if (next === undefined || next.startsWith('-')) {
+        if (out.error === null) out.error = '--baseline requires a path';
+      } else { out.baseline = next; i++; }
+    } else if (a.startsWith('--baseline=')) {
+      const path = a.slice('--baseline='.length);
+      if (path.length === 0) {
+        if (out.error === null) out.error = '--baseline= requires a non-empty path';
+      } else { out.baseline = path; }
+    } else if (a === '--json') {
       const next = argv[i + 1];
       if (next === undefined || next.startsWith('-')) {
         if (out.error === null) out.error = '--json requires a path';
@@ -473,6 +487,149 @@ function slimSummary(groups) {
  * @param {string} [version]
  * @returns {object}
  */
+const BASELINE_FORMAT = 1;
+
+/**
+ * Collect every finding across a run's checks into a stable cluster map, keyed
+ * by `kind:reason` with a count.
+ *
+ * Keys are deliberately origin-free. A baseline is meant to persist across
+ * commits, and an origin is a stack string whose line numbers shift the moment
+ * anyone touches a file -- keying on it would invalidate the whole baseline on
+ * every edit, which makes the baseline useless. Coarser but stable beats precise
+ * but brittle here.
+ * @private
+ */
+function clusterFindings(report) {
+  const all = [];
+  for (let i = 0; i < report.checks.length; i++) {
+    const f = report.checks[i].findings;
+    for (let j = 0; j < f.length; j++) all.push(f[j]);
+  }
+  const groups = groupFindings(all, { byOrigin: false });
+  const clusters = Object.create(null);
+  for (let i = 0; i < groups.length; i++) {
+    clusters[groups[i].kind + ':' + groups[i].reason] = groups[i].count;
+  }
+  return clusters;
+}
+
+/**
+ * Build a baseline artifact from a run. Records the cluster counts a future run
+ * is allowed to reproduce without failing.
+ */
+export function buildBaseline(report, version) {
+  return {
+    tool: 'leakforge',
+    baselineFormat: BASELINE_FORMAT,
+    version: version || null,
+    suite: report.suite || null,
+    createdAt: new Date().toISOString(),
+    clusters: clusterFindings(report),
+  };
+}
+
+/**
+ * Compare a run against a baseline. A cluster regresses when it is new, or when
+ * its count exceeds the baselined count. A cluster that shrank or vanished is an
+ * improvement, reported but never a failure.
+ *
+ * @returns {{ regressed: boolean, added: Array, increased: Array, resolved: Array,
+ *   baselinedFindings: number }}
+ */
+export function compareBaseline(report, baseline) {
+  if (baseline === null || typeof baseline !== 'object' ||
+      baseline.clusters === null || typeof baseline.clusters !== 'object') {
+    throw new Error('baseline is malformed: expected an object with a "clusters" map');
+  }
+  if (baseline.baselineFormat !== BASELINE_FORMAT) {
+    throw new Error(
+      'baseline format ' + String(baseline.baselineFormat) + ' is not supported ' +
+      '(this leakforge writes and reads format ' + BASELINE_FORMAT + '); ' +
+      'regenerate it with --update-baseline'
+    );
+  }
+  const current = clusterFindings(report);
+  const base = baseline.clusters;
+
+  const added = [];
+  const increased = [];
+  let baselinedFindings = 0;
+
+  for (const key in current) {
+    const now = current[key];
+    if (!(key in base)) {
+      added.push({ key: key, count: now });
+    } else if (now > base[key]) {
+      increased.push({ key: key, from: base[key], to: now });
+      baselinedFindings += base[key];
+    } else {
+      baselinedFindings += now;
+    }
+  }
+
+  const resolved = [];
+  for (const key in base) {
+    if (!(key in current)) resolved.push({ key: key, count: base[key] });
+  }
+
+  return {
+    regressed: added.length > 0 || increased.length > 0,
+    added: added,
+    increased: increased,
+    resolved: resolved,
+    baselinedFindings: baselinedFindings,
+  };
+}
+
+/**
+ * Render a baseline comparison. New and increased clusters are the regressions
+ * CI fails on; baselined and resolved clusters are shown for context.
+ */
+export function renderBaselineReport(report, comparison) {
+  const lines = [];
+  lines.push('=== leakforge: ' + (report.suite || 'suite') + ' (baseline mode) ===');
+
+  if (comparison.baselinedFindings > 0) {
+    lines.push('Baselined (ignored): ' + comparison.baselinedFindings + ' finding(s)');
+  }
+
+  if (comparison.added.length > 0) {
+    lines.push('');
+    lines.push('NEW leak clusters (not in baseline):');
+    for (let i = 0; i < comparison.added.length; i++) {
+      const a = comparison.added[i];
+      lines.push('  + ' + a.key.replace(':', ' / ') + '  (' + a.count + ')');
+    }
+  }
+  if (comparison.increased.length > 0) {
+    lines.push('');
+    lines.push('INCREASED past baseline:');
+    for (let i = 0; i < comparison.increased.length; i++) {
+      const inc = comparison.increased[i];
+      lines.push('  ^ ' + inc.key.replace(':', ' / ') + '  ' + inc.from + ' -> ' + inc.to);
+    }
+  }
+  if (comparison.resolved.length > 0) {
+    lines.push('');
+    lines.push('Resolved since baseline (' + comparison.resolved.length +
+      ' cluster(s) -- consider refreshing with --update-baseline):');
+    for (let i = 0; i < comparison.resolved.length; i++) {
+      lines.push('  - ' + comparison.resolved[i].key.replace(':', ' / '));
+    }
+  }
+
+  lines.push('');
+  if (comparison.regressed) {
+    const n = comparison.added.length + comparison.increased.length;
+    lines.push('Verdict: LEAK (exit ' + EXIT_LEAK + ')   [' + n + ' regression(s) vs baseline]');
+  } else {
+    lines.push('No new leaks against baseline.');
+    lines.push('Verdict: CLEAN (exit ' + EXIT_CLEAN + ')');
+  }
+  return lines.join('\n');
+}
+
 export function suiteReportToJson(report, version) {
   const checks = [];
   for (let i = 0; i < report.checks.length; i++) {

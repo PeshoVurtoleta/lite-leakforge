@@ -1,6 +1,6 @@
 {
   "name": "@zakkster/lite-leakforge",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "Leak specimens, CI harness, and dashboard for @zakkster/lite-leak. Zero-GC diagnostic toolkit.",
   "type": "module",
   "main": "./Leakforge.js",

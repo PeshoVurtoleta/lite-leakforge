@@ -2,6 +2,56 @@
 
 All notable changes to `@zakkster/lite-leakforge` are documented here.
 
+## 1.5.0 (2026-07-22)
+
+**`--baseline`.** Fail only on findings that are new since a saved baseline.
+This is the flag that lets a gate be adopted on a codebase that already leaks:
+capture the current state, then CI fails only when a leak is added or an
+existing one grows -- without a "fix everything first" cliff, which is the single
+biggest reason leak gates never get turned on.
+
+### Added
+
+- **`--baseline <path>`** -- compare this run against the baseline and gate on
+  regressions only. A cluster regresses when it is new (a `kind:reason` not in
+  the baseline) or when its count exceeds the baselined count. A cluster that
+  shrank or vanished is an improvement -- reported, never a failure.
+
+  ```
+  === leakforge: my-suite (baseline mode) ===
+  Baselined (ignored): 202 finding(s)
+
+  NEW leak clusters (not in baseline):
+    + socket-orphan / no-owner-open  (3)
+  INCREASED past baseline:
+    ^ timer-orphan / no-owner-pending  190 -> 240
+
+  Verdict: LEAK (exit 1)   [2 regression(s) vs baseline]
+  ```
+
+- **`--update-baseline`** -- with `--baseline <path>`, (re)write the baseline
+  from this run. A run that leaks is still recorded; the baseline captures the
+  current state, whatever it is.
+
+- **`buildBaseline` / `compareBaseline` / `renderBaselineReport`** exported for
+  programmatic use.
+
+### Design
+
+- **Baseline keys are `kind:reason`, origin-free on purpose.** A baseline
+  persists across commits, and an origin is a stack string whose line numbers
+  move the moment anyone edits a file -- keying on it would invalidate the whole
+  baseline on every change. Coarser but stable beats precise but brittle.
+- **Fail closed.** A missing or unreadable baseline exits `3` (inconclusive)
+  with a hint to create one, never a silent pass -- without a baseline there is
+  no honest way to decide what is new. A malformed baseline or an unsupported
+  `baselineFormat` throws with a regenerate hint.
+- **`--update-baseline` without `--baseline <path>`** is a usage error (`2`).
+
+- **`test/baseline.test.js`** -- 15 tests covering new/increased/resolved
+  clusters, the improvement-is-not-a-regression rule, origin-free keying,
+  fail-closed on bad baselines, and a JSON round-trip.
+
 ## 1.4.1 (2026-07-21)
 
 **Logic hardening.** A pass of adversarial review found that the gate reported

@@ -86,3 +86,18 @@ HARDENING (1.4.1)
 - Dashboard dispose() cancels its raf; selection held by entry identity not
   filtered index. Formatters tolerate null/primitive/hostile-getter events.
 - torture/ suite: 106 tests, `npm run torture`.
+
+BASELINE (1.5.0)
+----------------
+--baseline <path>       gate on findings NEW since the baseline only.
+--update-baseline       with --baseline, (re)write the baseline from this run.
+buildBaseline/compareBaseline/renderBaselineReport exported.
+  A cluster (kind:reason) REGRESSES if new, or if its count exceeds the baseline
+  count. A shrunk/vanished cluster is an improvement (reported, never fails).
+  Keys are kind:reason, ORIGIN-FREE ON PURPOSE: origins are stack strings whose
+  line numbers move on any edit; keying on them would break the baseline every
+  commit. Coarser but stable.
+  FAIL CLOSED: missing/unreadable baseline -> exit 3 (inconclusive) with a hint,
+  never a silent pass. Malformed/unsupported baselineFormat throws. Purpose:
+  adopt the gate on a codebase that already leaks without a "fix everything
+  first" cliff.

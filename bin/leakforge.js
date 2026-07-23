@@ -13,7 +13,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
 
 import { VERSION } from '../Leakforge.js';
 import {
@@ -22,6 +22,9 @@ import {
   runSuite,
   renderSuiteReport,
   suiteReportToJson,
+  buildBaseline,
+  compareBaseline,
+  renderBaselineReport,
   builtinSpecimens,
   runSpecimens,
   renderSpecimenReport,
@@ -29,6 +32,8 @@ import {
   USAGE,
   EXIT_USAGE,
   EXIT_ERROR,
+  EXIT_CLEAN,
+  EXIT_LEAK,
 } from './Cli.js';
 
 // --help/--version never run the gate, so don't pay for a subprocess.
@@ -99,6 +104,52 @@ async function main() {
   }
   const suite = await loadSuite(args.suite);
   const report = await runSuite(suite);
+
+  // --update-baseline: write the current clusters as the new baseline and stop.
+  // A run that leaks is still recorded -- the point of a baseline is to capture
+  // the current state, whatever it is.
+  if (args.updateBaseline) {
+    if (args.baseline === null) {
+      process.stderr.write('error: --update-baseline requires --baseline <path>\n');
+      return EXIT_USAGE;
+    }
+    const ok = writeArtifact(args.baseline, buildBaseline(report, VERSION));
+    if (!ok) return EXIT_ERROR;
+    process.stdout.write('Wrote baseline to ' + args.baseline + '\n');
+    return EXIT_CLEAN;
+  }
+
+  // --baseline: gate on regressions against the saved baseline only.
+  if (args.baseline !== null) {
+    let baseline;
+    try {
+      baseline = JSON.parse(readFileSync(args.baseline, 'utf8'));
+    } catch (err) {
+      // Fail closed: without a readable baseline we cannot decide what is new,
+      // so we do not silently pass.
+      process.stderr.write(
+        'leakforge: could not read baseline "' + args.baseline + '": ' +
+        (err && err.message ? err.message : String(err)) + '\n' +
+        'Create one first: leakforge ' + args.suite + ' --baseline ' +
+        args.baseline + ' --update-baseline\n'
+      );
+      return EXIT_ERROR;
+    }
+    let comparison;
+    try {
+      comparison = compareBaseline(report, baseline);
+    } catch (err) {
+      process.stderr.write('leakforge: ' + (err && err.message ? err.message : String(err)) + '\n');
+      return EXIT_ERROR;
+    }
+    process.stdout.write(renderBaselineReport(report, comparison) + '\n');
+    if (args.json !== null) {
+      const ok = writeArtifact(args.json, suiteReportToJson(report, VERSION));
+      if (!ok) return EXIT_ERROR;
+    }
+    return comparison.regressed ? EXIT_LEAK : EXIT_CLEAN;
+  }
+
   process.stdout.write(renderSuiteReport(report, { group: args.group }) + '\n');
   if (args.json !== null) {
     const ok = writeArtifact(args.json, suiteReportToJson(report, VERSION));

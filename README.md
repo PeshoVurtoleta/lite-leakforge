@@ -78,9 +78,33 @@ export default {
 ```
 npx leakforge app.leak.mjs            # 0 clean, 1 leak, 3 inconclusive
 npx leakforge app.leak.mjs --json leaks.json   # + machine-readable artifact
+npx leakforge app.leak.mjs --baseline .leakforge-baseline.json --update-baseline  # capture
+npx leakforge app.leak.mjs --baseline .leakforge-baseline.json                    # gate on NEW leaks only
 npx leakforge --specimens             # verify every built-in specimen (kernel acceptance)
 npx leakforge --specimens raf-orphan  # a single specimen
 ```
+
+## Adopting on a codebase that already leaks
+
+A gate that fails on every existing leak never gets turned on -- fixing them all
+first is too big a cliff. `--baseline` removes the cliff: capture the current
+state once, commit it, and CI then fails only on leaks you *add*.
+
+```sh
+# once, capturing today's leaks as the accepted baseline
+npx leakforge app.leak.mjs --baseline .leakforge-baseline.json --update-baseline
+git add .leakforge-baseline.json
+
+# in CI, from then on
+npx leakforge app.leak.mjs --baseline .leakforge-baseline.json
+```
+
+A finding cluster (`kind:reason`) regresses when it is **new**, or when its
+**count grows** past the baseline. A cluster that shrank or disappeared is an
+improvement -- reported, never a failure -- and refreshing the baseline
+(`--update-baseline`) locks in the win. Keys are origin-free so the baseline
+survives ordinary code edits; a missing or malformed baseline fails closed
+(exit 3), never a silent pass.
 
 The gate needs manual GC; the CLI re-execs itself with `--expose-gc`
 automatically, so plain `npx leakforge` works. Exit codes aggregate across

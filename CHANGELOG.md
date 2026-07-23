@@ -2,6 +2,24 @@
 
 All notable changes to `@zakkster/lite-leakforge` are documented here.
 
+## 1.6.0 (2026-07-22)
+
+**emitter-orphan specimen.** Acceptance coverage for lite-leak 1.7.0's first
+Node-runtime kernel.
+
+### Added
+
+- **`createEmitterOrphanSpecimen()`** -- a Node `EventEmitter` listener added at
+  module scope with no owner, run through a kernel configured with
+  `warnOnNoOwner: true`. Validates the pre-FR warning channel
+  (`no-owner-add`). The EventEmitter is specimen-local (a subclass), so the
+  acceptance run never patches the EventEmitter the CLI itself depends on. Now
+  one of the built-in specimens (`--specimens emitter-orphan`).
+
+### Changed
+
+- Requires `@zakkster/lite-leak` `^1.7.0`.
+
 ## 1.5.0 (2026-07-22)
 
 **`--baseline`.** Fail only on findings that are new since a saved baseline.

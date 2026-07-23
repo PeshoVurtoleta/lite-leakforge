@@ -45,6 +45,7 @@ import {
   createAudioNodeSpecimen,
   createSocketOrphanSpecimen,
   createGlResourceOrphanSpecimen,
+  createEmitterOrphanSpecimen,
 } from '../scenarios/Scenarios.js';
 
 export { EXIT_CLEAN, EXIT_LEAK, EXIT_INCONCLUSIVE };
@@ -103,6 +104,7 @@ const BUILTIN = {
   'audio-node': createAudioNodeSpecimen,
   'socket-orphan': createSocketOrphanSpecimen,
   'gl-resource-orphan': createGlResourceOrphanSpecimen,
+  'emitter-orphan': createEmitterOrphanSpecimen,
 };
 
 /**

@@ -1,0 +1,197 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 7955b64..be13e4c 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -2,6 +2,24 @@
+ 
+ All notable changes to `@zakkster/lite-leakforge` are documented here.
+ 
++## 1.6.0 (2026-07-22)
++
++**emitter-orphan specimen.** Acceptance coverage for lite-leak 1.7.0's first
++Node-runtime kernel.
++
++### Added
++
++- **`createEmitterOrphanSpecimen()`** -- a Node `EventEmitter` listener added at
++  module scope with no owner, run through a kernel configured with
++  `warnOnNoOwner: true`. Validates the pre-FR warning channel
++  (`no-owner-add`). The EventEmitter is specimen-local (a subclass), so the
++  acceptance run never patches the EventEmitter the CLI itself depends on. Now
++  one of the built-in specimens (`--specimens emitter-orphan`).
++
++### Changed
++
++- Requires `@zakkster/lite-leak` `^1.7.0`.
++
+ ## 1.5.0 (2026-07-22)
+ 
+ **`--baseline`.** Fail only on findings that are new since a saved baseline.
+diff --git a/Leakforge.js b/Leakforge.js
+index 7d9ba45..beb76bf 100644
+--- a/Leakforge.js
++++ b/Leakforge.js
+@@ -7,7 +7,7 @@
+  * MIT License
+  */
+ 
+-export const VERSION = '1.5.0';
++export const VERSION = '1.6.0';
+ 
+ // Harness
+ export { settleFinalizers, settleTracker } from './harness/Settle.js';
+diff --git a/bin/Cli.js b/bin/Cli.js
+index 39eda11..235d7b8 100644
+--- a/bin/Cli.js
++++ b/bin/Cli.js
+@@ -45,6 +45,7 @@ import {
+   createAudioNodeSpecimen,
+   createSocketOrphanSpecimen,
+   createGlResourceOrphanSpecimen,
++  createEmitterOrphanSpecimen,
+ } from '../scenarios/Scenarios.js';
+ 
+ export { EXIT_CLEAN, EXIT_LEAK, EXIT_INCONCLUSIVE };
+@@ -103,6 +104,7 @@ const BUILTIN = {
+   'audio-node': createAudioNodeSpecimen,
+   'socket-orphan': createSocketOrphanSpecimen,
+   'gl-resource-orphan': createGlResourceOrphanSpecimen,
++  'emitter-orphan': createEmitterOrphanSpecimen,
+ };
+ 
+ /**
+diff --git a/llms.txt b/llms.txt
+index 3bfc807..fc01262 100644
+--- a/llms.txt
++++ b/llms.txt
+@@ -101,3 +101,11 @@ buildBaseline/compareBaseline/renderBaselineReport exported.
+   never a silent pass. Malformed/unsupported baselineFormat throws. Purpose:
+   adopt the gate on a codebase that already leaks without a "fix everything
+   first" cliff.
++
++EMITTER-ORPHAN SPECIMEN (1.6.0)
++-------------------------------
++createEmitterOrphanSpecimen() -- acceptance for lite-leak 1.7.0 emitter-orphan.
++Node EventEmitter listener added at module scope (no owner) with
++warnOnNoOwner:true -> validates the no-owner-add warning channel. EventEmitter is
++a specimen-local subclass (never patches the CLI's own EventEmitter). Built-in:
++--specimens emitter-orphan. Requires lite-leak ^1.7.0.
+diff --git a/package.json b/package.json
+index f127216..cffb75a 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "@zakkster/lite-leakforge",
+-  "version": "1.5.0",
++  "version": "1.6.0",
+   "description": "Leak specimens, CI harness, and dashboard for @zakkster/lite-leak. Zero-GC diagnostic toolkit.",
+   "type": "module",
+   "main": "./Leakforge.js",
+@@ -85,7 +85,7 @@
+     "url": "https://github.com/sponsors/PeshoVurtoleta"
+   },
+   "dependencies": {
+-    "@zakkster/lite-leak": "^1.5.0"
++    "@zakkster/lite-leak": "^1.7.0"
+   },
+   "peerDependencies": {
+     "@zakkster/lite-signal": ">=1.5.0-beta.3 <2.0.0"
+diff --git a/scenarios/EmitterOrphan.js b/scenarios/EmitterOrphan.js
+new file mode 100644
+index 0000000..1cef3ad
+--- /dev/null
++++ b/scenarios/EmitterOrphan.js
+@@ -0,0 +1,71 @@
++/**
++ * @zakkster/lite-leakforge -- scenarios/EmitterOrphan.js
++ *
++ * Specimen: a Node EventEmitter listener added outside any owner.
++ *
++ * Acceptance test for lite-leak's emitter-orphan kernel (shipped in lite-leak
++ * 1.7.0). Unlike the browser kernels, emitter-orphan defaults `warnOnNoOwner`
++ * to false, so this specimen opts in to exercise the pre-FR warning channel:
++ *   - onWarning at add with reason 'no-owner-add'
++ *
++ * There is no audit finding for an ownerless add -- a finding
++ * (`owner-disposed-listener-live`) requires an owner that was disposed while the
++ * listener stayed attached, which is the broken-cleanup safety net rather than
++ * something a module-scope specimen can stage. So expectedFindings is empty and
++ * this specimen validates the warning channel only.
++ *
++ * The EventEmitter is specimen-local (a subclass), so patching its prototype
++ * never touches the EventEmitter the runtime and the CLI itself depend on.
++ *
++ * needsSettle is false: pre-FR channel only.
++ *
++ * Copyright (c) 2026 Zahary Shinikchiev <shinikchiev@yahoo.com>
++ * MIT License
++ */
++
++import { EventEmitter } from 'node:events';
++import { createEmitterOrphanKernel } from '@zakkster/lite-leak';
++
++const SPECIMEN_NAME = 'emitter-orphan';
++
++/**
++ * Create an emitter-orphan specimen.
++ * @returns {Specimen}
++ */
++export function createEmitterOrphanSpecimen() {
++  // Subclass so the kernel patches this prototype, not the global EventEmitter.
++  class Bus extends EventEmitter {}
++  let bus = null;
++  const listener = function onData() {};
++
++  return {
++    name: SPECIMEN_NAME,
++
++    kernels: function () {
++      return [createEmitterOrphanKernel({ EventEmitter: Bus, warnOnNoOwner: true })];
++    },
++
++    expectedLeaks: [],
++    expectedWarnings: [
++      { kind: 'emitter-orphan', reason: 'no-owner-add' },
++    ],
++    expectedFindings: [],
++
++    needsSettle: false,
++
++    inject: function (_tracker) {
++      // Added at module scope: nothing owns the listener, so nothing removes it.
++      // With warnOnNoOwner:true the kernel warns at the add.
++      bus = new Bus();
++      bus.on('data', listener);
++    },
++
++    release: function () {
++      // Remove so the specimen leaves no attached listener behind.
++      if (bus !== null) {
++        bus.removeListener('data', listener);
++        bus = null;
++      }
++    },
++  };
++}
+diff --git a/scenarios/Scenarios.js b/scenarios/Scenarios.js
+index ec90633..bba693b 100644
+--- a/scenarios/Scenarios.js
++++ b/scenarios/Scenarios.js
+@@ -19,3 +19,4 @@ export { createWorkerOrphanSpecimen } from './WorkerOrphan.js';
+ export { createAudioNodeSpecimen } from './AudioNode.js';
+ export { createSocketOrphanSpecimen } from './SocketOrphan.js';
+ export { createGlResourceOrphanSpecimen } from './GlResourceOrphan.js';
++export { createEmitterOrphanSpecimen } from './EmitterOrphan.js';
+diff --git a/test/version.test.js b/test/version.test.js
+index ed4014b..2cb2a4e 100644
+--- a/test/version.test.js
++++ b/test/version.test.js
+@@ -13,6 +13,6 @@ describe('VERSION', () => {
+   it('matches package.json', () => {
+     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+     assert.equal(VERSION, pkg.version);
+-    assert.equal(VERSION, '1.5.0');
++    assert.equal(VERSION, '1.6.0');
+   });
+ });

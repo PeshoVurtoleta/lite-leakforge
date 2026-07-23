@@ -101,3 +101,11 @@ buildBaseline/compareBaseline/renderBaselineReport exported.
   never a silent pass. Malformed/unsupported baselineFormat throws. Purpose:
   adopt the gate on a codebase that already leaks without a "fix everything
   first" cliff.
+
+EMITTER-ORPHAN SPECIMEN (1.6.0)
+-------------------------------
+createEmitterOrphanSpecimen() -- acceptance for lite-leak 1.7.0 emitter-orphan.
+Node EventEmitter listener added at module scope (no owner) with
+warnOnNoOwner:true -> validates the no-owner-add warning channel. EventEmitter is
+a specimen-local subclass (never patches the CLI's own EventEmitter). Built-in:
+--specimens emitter-orphan. Requires lite-leak ^1.7.0.
